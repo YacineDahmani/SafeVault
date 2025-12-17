@@ -87,12 +87,11 @@ class Backend:
             )
         """)
         
-        # Helper to migrate existing DBs (add PIN columns if missing)
         try:
             cursor.execute("ALTER TABLE cards ADD COLUMN pin_encrypted BLOB")
             cursor.execute("ALTER TABLE cards ADD COLUMN pin_salt BLOB")
         except sqlite3.OperationalError:
-            pass  # Columns likely exist
+            pass  
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS notes (
@@ -627,6 +626,46 @@ class App(ctk.CTk):
         pyperclip.copy(pw)
         self.show_toast("Password generated & copied!")
  
+    def validate_card_number(self, new_value):
+        """Validate credit card number input - max 16 digits."""
+        if new_value == "":
+            return True
+        return new_value.isdigit() and len(new_value) <= 16
+    
+    def validate_expiry(self, new_value):
+        """Validate expiry date input - MM/YY format with auto-slash."""
+        if new_value == "":
+            return True
+        
+        digits_only = new_value.replace("/", "")
+        
+        if not digits_only.isdigit():
+            return False
+        
+        if len(new_value) > 5:
+            return False
+        
+        if len(digits_only) >= 2:
+            if len(new_value) == 2:
+                self.card_expiry.delete(0, 'end')
+                self.card_expiry.insert(0, new_value + "/")
+                return False  
+            return new_value[2:3] == "/" if len(new_value) > 2 else True
+        
+        return True
+    
+    def validate_cvv(self, new_value):
+        """Validate CVV input - exactly 4 digits."""
+        if new_value == "":
+            return True
+        return new_value.isdigit() and len(new_value) <= 4
+    
+    def validate_pin(self, new_value):
+        """Validate PIN input - exactly 4 digits."""
+        if new_value == "":
+            return True
+        return new_value.isdigit() and len(new_value) <= 4
+
     def build_cards_tab(self):
         """Build the Credit Cards tab content."""
         tab = self.tab_cards
@@ -644,16 +683,24 @@ class App(ctk.CTk):
         self.card_holder = ctk.CTkEntry(form, placeholder_text="Holder", height=40)
         self.card_holder.grid(row=1, column=1, padx=5, pady=(0, 15), sticky="ew")
         
-        self.card_number = ctk.CTkEntry(form, placeholder_text="Num (16 digits)", height=40)
+        card_num_validate = self.register(self.validate_card_number)
+        self.card_number = ctk.CTkEntry(form, placeholder_text="Num (16 digits)", height=40,
+                                        validate="key", validatecommand=(card_num_validate, '%P'))
         self.card_number.grid(row=1, column=2, padx=5, pady=(0, 15), sticky="ew")
         
-        self.card_expiry = ctk.CTkEntry(form, placeholder_text="MM/YY", height=40, width=80)
+        expiry_validate = self.register(self.validate_expiry)
+        self.card_expiry = ctk.CTkEntry(form, placeholder_text="MM/YY", height=40, width=80,
+                                        validate="key", validatecommand=(expiry_validate, '%P'))
         self.card_expiry.grid(row=1, column=3, padx=5, pady=(0, 15), sticky="ew")
         
-        self.card_cvv = ctk.CTkEntry(form, placeholder_text="CVV", height=40, width=60, show="•")
+        cvv_validate = self.register(self.validate_cvv)
+        self.card_cvv = ctk.CTkEntry(form, placeholder_text="CVV (4 digits)", height=40, width=60, show="•",
+                                     validate="key", validatecommand=(cvv_validate, '%P'))
         self.card_cvv.grid(row=1, column=4, padx=5, pady=(0, 15), sticky="ew")
         
-        self.card_pin = ctk.CTkEntry(form, placeholder_text="PIN", height=40, width=60, show="•")
+        pin_validate = self.register(self.validate_pin)
+        self.card_pin = ctk.CTkEntry(form, placeholder_text="PIN (4 digits)", height=40, width=60, show="•",
+                                     validate="key", validatecommand=(pin_validate, '%P'))
         self.card_pin.grid(row=1, column=5, padx=5, pady=(0, 15), sticky="ew")
         
         ctk.CTkButton(form, text="Add", command=self.add_card_entry, width=80, height=40,
