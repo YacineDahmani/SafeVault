@@ -1,0 +1,10 @@
+# SafeVolt Password Manager 
+
+# Tkinter UI
+customtkinter>=5.2.0
+
+# Cryptography library for Fernet encryption and PBKDF2
+cryptography>=41.0.0
+
+# Clipboard integration
+pyperclip>=1.8.0
