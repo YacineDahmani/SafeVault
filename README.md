@@ -1,6 +1,6 @@
-# SafeVolt 🔐
+# SafeVault 🔐
 
-**SafeVolt** is a secure, local, and user-friendly password manager built with Python. It features a modern tabbed interface to manage your passwords, credit cards, and secret notes securely.
+**SafeVault** is a secure, local, and user-friendly password manager built with Python. It features a modern tabbed interface to manage your passwords, credit cards, and secret notes securely.
 
 ## 🌟 Features
 
@@ -24,8 +24,8 @@
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/YacineDahmani/SafeVolt.git
-    cd SafeVolt
+    git clone https://github.com/YacineDahmani/SafeVault.git
+    cd SafeVault
     ```
 
 2.  **Create and activate a virtual environment (Recommended):**
@@ -49,7 +49,7 @@
 
 1.  **Run the application:**
     ```bash
-    python SafeVolt.py
+    python SafeVault.py
     ```
 
 2.  **First Run:**
