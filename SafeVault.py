@@ -1,5 +1,5 @@
 """
-SafeVolt - Personal Local Password Manager
+SafeVault - Personal Local Password Manager
 ==========================================
 A secure, local password manager with tabbed interface for:
 - Passwords (App/Website credentials)
@@ -359,7 +359,7 @@ class App(ctk.CTk):
         
         self.backend = Backend()
         
-        self.title("🔐 SafeVolt - Password Manager")
+        self.title("🔐 SafeVault - Password Manager")
         self.geometry("900x700")
         self.minsize(800, 600)
         
@@ -388,7 +388,7 @@ class App(ctk.CTk):
         frame.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(
-            frame, text="🔐 Welcome to SafeVolt",
+            frame, text="🔐 Welcome to SafeVault",
             font=ctk.CTkFont(size=28, weight="bold")
         ).grid(row=0, column=0, pady=(0, 10))
         
@@ -445,7 +445,7 @@ class App(ctk.CTk):
         frame.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(
-            frame, text="🔐 SafeVolt",
+            frame, text="🔐 SafeVault",
             font=ctk.CTkFont(size=32, weight="bold")
         ).grid(row=0, column=0, pady=(40, 10))
         
@@ -493,7 +493,7 @@ class App(ctk.CTk):
         header.grid_columnconfigure(1, weight=1)
         
         ctk.CTkLabel(
-            header, text="🔐 SafeVolt", font=ctk.CTkFont(size=24, weight="bold")
+            header, text="🔐 SafeVault", font=ctk.CTkFont(size=24, weight="bold")
         ).grid(row=0, column=0, padx=20, pady=15)
         
         ctk.CTkButton(
