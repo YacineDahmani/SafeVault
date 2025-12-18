@@ -338,6 +338,58 @@ class Backend:
         alphabet = string.ascii_letters + string.digits + string.punctuation
         return ''.join(secrets.choice(alphabet) for _ in range(length))
     
+    def export_vault(self, dest_path: str):
+        """Create an encrypted backup of the database file."""
+        import shutil
+        self.conn.commit()
+        shutil.copy2(self.db_path, dest_path)
+
+    def import_vault(self, src_path: str):
+        """Replace the current database with a backup."""
+        import shutil
+        self.conn.close()
+        shutil.copy2(src_path, self.db_path)
+        self.conn = sqlite3.connect(self.db_path)
+        self.conn.row_factory = sqlite3.Row
+        self._encryption_key = None 
+
+    def get_full_export_data(self) -> dict:
+        """Decrypt and return all vault data as a dictionary."""
+        data = {
+            'passwords': [],
+            'cards': [],
+            'notes': [],
+            'export_date': datetime.now().isoformat()
+        }
+        
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, app_name, username FROM passwords")
+        for row in cursor.fetchall():
+            try:
+                data['passwords'].append({
+                    'app_name': row['app_name'],
+                    'username': row['username'],
+                    'password': self.get_password(row['id'])
+                })
+            except Exception:
+                continue
+
+        cursor.execute("SELECT id FROM cards")
+        for row in cursor.fetchall():
+            try:
+                data['cards'].append(self.get_card_details(row['id']))
+            except Exception:
+                continue
+
+        cursor.execute("SELECT id FROM notes")
+        for row in cursor.fetchall():
+            try:
+                data['notes'].append(self.get_note_content(row['id']))
+            except Exception:
+                continue
+                
+        return data
+
     def close(self):
         """Close the database connection."""
         self.conn.close()
@@ -548,14 +600,16 @@ class App(ctk.CTk):
         self.tab_passwords = self.tabview.add("🔑 Passwords")
         self.tab_cards = self.tabview.add("💳 Cards")
         self.tab_notes = self.tabview.add("📝 Notes")
+        self.tab_settings = self.tabview.add("⚙️ Settings")
         
-        for tab in [self.tab_passwords, self.tab_cards, self.tab_notes]:
+        for tab in [self.tab_passwords, self.tab_cards, self.tab_notes, self.tab_settings]:
             tab.grid_columnconfigure(0, weight=1)
             tab.grid_rowconfigure(1, weight=1)
         
         self.build_passwords_tab()
         self.build_cards_tab()
         self.build_notes_tab()
+        self.build_settings_tab()
     
 
     def build_passwords_tab(self):
@@ -578,8 +632,7 @@ class App(ctk.CTk):
         pw_frame = ctk.CTkFrame(form, fg_color="transparent")
         pw_frame.grid(row=1, column=2, padx=5, pady=(0, 15), sticky="ew")
         pw_frame.grid_columnconfigure(0, weight=1)
-        pw_frame.grid_columnconfigure(1, weight=0, minsize=40) # Lock toggle column
-        
+        pw_frame.grid_columnconfigure(1, weight=0, minsize=40) 
         self.pw_pass = ctk.CTkEntry(pw_frame, placeholder_text="Password", height=40, show="•")
         self.pw_pass.grid(row=0, column=0, sticky="ew")
         
@@ -740,7 +793,7 @@ class App(ctk.CTk):
         self.card_holder.grid(row=1, column=1, padx=5, pady=(0, 15), sticky="ew")
         
         card_num_validate = self.register(self.validate_card_number)
-        self.card_number = ctk.CTkEntry(form, placeholder_text="Num (16 digits)", height=40,
+        self.card_number = ctk.CTkEntry(form, placeholder_text="CardNumber", height=40,
                                         validate="key", validatecommand=(card_num_validate, '%P'))
         self.card_number.grid(row=1, column=2, padx=5, pady=(0, 15), sticky="ew")
         
@@ -752,32 +805,32 @@ class App(ctk.CTk):
         cvv_frame = ctk.CTkFrame(form, fg_color="transparent")
         cvv_frame.grid(row=1, column=4, padx=5, pady=(0, 15), sticky="ew")
         cvv_frame.grid_columnconfigure(0, weight=1)
-        cvv_frame.grid_columnconfigure(1, weight=0, minsize=30) # Lock toggle column
+        cvv_frame.grid_columnconfigure(1, weight=0, minsize=40) # Lock toggle column
         
         cvv_validate = self.register(self.validate_cvv)
         self.card_cvv = ctk.CTkEntry(cvv_frame, placeholder_text="CVV", height=40, show="•",
                                      validate="key", validatecommand=(cvv_validate, '%P'))
         self.card_cvv.grid(row=0, column=0, sticky="ew")
         
-        self.cvv_eye = ctk.CTkButton(cvv_frame, text="👁️", width=30, height=40, fg_color="#333333", hover_color="#444444",
+        self.cvv_eye = ctk.CTkButton(cvv_frame, text="👁️", width=40, height=40, fg_color="#333333", hover_color="#444444",
                                     font=self.toggle_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.card_cvv, self.cvv_eye))
-        self.cvv_eye.grid(row=0, column=1, padx=(2, 0))
+        self.cvv_eye.grid(row=0, column=1, padx=(5, 0))
         
         pin_frame = ctk.CTkFrame(form, fg_color="transparent")
         pin_frame.grid(row=1, column=5, padx=5, pady=(0, 15), sticky="ew")
         pin_frame.grid_columnconfigure(0, weight=1)
-        pin_frame.grid_columnconfigure(1, weight=0, minsize=30) # Lock toggle column
+        pin_frame.grid_columnconfigure(1, weight=0, minsize=40) # Lock toggle column
         
         pin_validate = self.register(self.validate_pin)
         self.card_pin = ctk.CTkEntry(pin_frame, placeholder_text="PIN", height=40, show="•",
                                      validate="key", validatecommand=(pin_validate, '%P'))
         self.card_pin.grid(row=0, column=0, sticky="ew")
         
-        self.pin_eye = ctk.CTkButton(pin_frame, text="👁️", width=30, height=40, fg_color="#333333", hover_color="#444444",
+        self.pin_eye = ctk.CTkButton(pin_frame, text="👁️", width=40, height=40, fg_color="#333333", hover_color="#444444",
                                     font=self.toggle_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.card_pin, self.pin_eye))
-        self.pin_eye.grid(row=0, column=1, padx=(2, 0))
+        self.pin_eye.grid(row=0, column=1, padx=(5, 0))
         
         ctk.CTkButton(form, text="Add", command=self.add_card_entry, width=80, height=40,
                       fg_color="#10B981", hover_color="#059669").grid(row=1, column=6, padx=(5, 15), pady=(0, 15))
@@ -1036,6 +1089,109 @@ class App(ctk.CTk):
                       command=lambda: [pyperclip.copy(note['content']), self.show_toast("Copied!")]).pack(side="left", padx=5)
         ctk.CTkButton(btn_frame, text="Close", width=80, command=popup.destroy).pack(side="left", padx=5)
     
+    def build_settings_tab(self):
+        """Build the Settings tab content."""
+        tab = self.tab_settings
+        tab.grid_rowconfigure(0, weight=1) 
+        
+        container = ctk.CTkScrollableFrame(tab, fg_color="transparent")
+        container.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+        container.grid_columnconfigure(0, weight=1)
+        
+        backup_frame = ctk.CTkFrame(container)
+        backup_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        backup_frame.grid_columnconfigure(0, weight=1)
+        
+        ctk.CTkLabel(backup_frame, text="💾 Backup & Restore", font=ctk.CTkFont(size=18, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+        
+        ctk.CTkLabel(backup_frame, text="Create an encrypted backup of your entire vault or restore from a previous backup.", 
+                     text_color="gray", wraplength=600, justify="left").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 20))
+        
+        btn_row = ctk.CTkFrame(backup_frame, fg_color="transparent")
+        btn_row.grid(row=2, column=0, sticky="w", padx=20, pady=(0, 20))
+        
+        ctk.CTkButton(btn_row, text="Backup Vault (.db)", command=self.handle_backup_vault,
+                      height=40, fg_color="#3B82F6", hover_color="#2563EB").pack(side="left", padx=(0, 10))
+        
+        ctk.CTkButton(btn_row, text="Import Vault (.db)", command=self.handle_import_vault,
+                      height=40, fg_color="#6366F1", hover_color="#4F46E5").pack(side="left")
+        
+        export_frame = ctk.CTkFrame(container)
+        export_frame.grid(row=1, column=0, sticky="ew")
+        export_frame.grid_columnconfigure(0, weight=1)
+        
+        ctk.CTkLabel(export_frame, text="📂 Data Export", font=ctk.CTkFont(size=18, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+        
+        ctk.CTkLabel(export_frame, text="Export all your data into a plain-text JSON file. This file will NOT be encrypted.",
+                     text_color="gray", wraplength=600, justify="left").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
+        
+        ctk.CTkLabel(export_frame, text="⚠️ WARNING: The exported JSON file contains your raw passwords. Keep it extremely safe!",
+                     text_color="#FF6B6B", font=ctk.CTkFont(size=12, weight="bold"), wraplength=600, justify="left").grid(
+                         row=2, column=0, sticky="w", padx=20, pady=(0, 20))
+        
+        ctk.CTkButton(export_frame, text="Export to JSON (Decrypted)", command=self.handle_export_json,
+                      height=40, fg_color="#F59E0B", hover_color="#D97706").grid(row=3, column=0, sticky="w", padx=20, pady=(0, 20))
+
+    def handle_backup_vault(self):
+        """Handle backup of the database file."""
+        from tkinter import filedialog
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".db",
+            filetypes=[("SQLite Database", "*.db")],
+            initialfile=f"SafeVault_Backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        )
+        if file_path:
+            try:
+                self.backend.export_vault(file_path)
+                self.show_toast("Backup created successfully!")
+            except Exception as e:
+                self.show_toast(f"Backup failed: {e}", error=True)
+
+    def handle_import_vault(self):
+        """Handle import of a database file."""
+        from tkinter import filedialog, messagebox
+        if not messagebox.askyesno("Confirm Import", 
+                                  "Importing a vault will OVERWRITE ALL current data and lock the vault. Continue?"):
+            return
+            
+        file_path = filedialog.askopenfilename(
+            filetypes=[("SQLite Database", "*.db")]
+        )
+        if file_path:
+            try:
+                self.backend.import_vault(file_path)
+                messagebox.showinfo("Success", "Vault imported successfully. Please log in again.")
+                self.show_login_screen()
+            except Exception as e:
+                self.show_toast(f"Import failed: {e}", error=True)
+
+    def handle_export_json(self):
+        """Handle export of decrypted data to JSON."""
+        from tkinter import filedialog, messagebox
+        import json
+        
+        if not messagebox.askyesno("Security Warning", 
+                                  "This will export all your passwords in PLAIN TEXT. Are you sure you want to proceed?"):
+            return
+            
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON file", "*.json")],
+            initialfile=f"SafeVault_Export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
+        if file_path:
+            try:
+                data = self.backend.get_full_export_data()
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4)
+                self.show_toast("Exported successfully!")
+                messagebox.showwarning("Security Reminder", 
+                                     f"Data exported to {file_path}. PLEASE DELETE THIS FILE after use or keep it in a secure location!")
+            except Exception as e:
+                self.show_toast(f"Export failed: {e}", error=True)
+
     def delete_note(self, note_id: int):
         """Delete a note."""
         self.backend.delete_note(note_id)
