@@ -281,7 +281,6 @@ class Backend:
             'pin': ''
         }
         
-        # Handle PIN (might be null for old records, though we migrate schema, data is separate)
         if row['pin_encrypted'] and row['pin_salt']:
              details['pin'] = self.decrypt(row['pin_encrypted'], row['pin_salt'])
              
@@ -372,6 +371,17 @@ class App(ctk.CTk):
             self.show_setup_screen()
         else:
             self.show_login_screen()
+
+    def toggle_password_visibility(self, entry: ctk.CTkEntry, button: ctk.CTkButton):
+        """Toggle the password visibility between masked and clear text."""
+        toggle_font = ctk.CTkFont(size=14)
+        if entry.cget("show") == "•":
+            entry.configure(show="")
+            button.configure(text="🔒", font=toggle_font)  # Show lock to indicate "click to mask"
+        else:
+            entry.configure(show="•")
+            button.configure(text="👁️", font=toggle_font)  
+        entry.focus_set()
     
     def clear_screen(self):
         """Remove all widgets from the window."""
@@ -397,12 +407,32 @@ class App(ctk.CTk):
         ).grid(row=1, column=0, pady=(0, 40))
         
         ctk.CTkLabel(frame, text="Master Password:", anchor="w").grid(row=2, column=0, sticky="w", pady=(0, 5))
-        self.setup_password = ctk.CTkEntry(frame, placeholder_text="Enter a strong password", show="•", height=45)
-        self.setup_password.grid(row=3, column=0, sticky="ew", pady=(0, 20))
+        
+        pw_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        pw_frame.grid(row=3, column=0, sticky="ew", pady=(0, 20))
+        pw_frame.grid_columnconfigure(0, weight=1)
+        
+        self.setup_password = ctk.CTkEntry(pw_frame, placeholder_text="Enter a strong password", show="•", height=45)
+        self.setup_password.grid(row=0, column=0, sticky="ew")
+        
+        self.setup_eye = ctk.CTkButton(pw_frame, text="👁️", width=45, height=45, fg_color="#333333", hover_color="#444444",
+                                      font=ctk.CTkFont(size=14),
+                                      command=lambda: self.toggle_password_visibility(self.setup_password, self.setup_eye))
+        self.setup_eye.grid(row=0, column=1, padx=(5, 0))
         
         ctk.CTkLabel(frame, text="Confirm Password:", anchor="w").grid(row=4, column=0, sticky="w", pady=(0, 5))
-        self.setup_confirm = ctk.CTkEntry(frame, placeholder_text="Confirm your password", show="•", height=45)
-        self.setup_confirm.grid(row=5, column=0, sticky="ew", pady=(0, 30))
+        
+        cpw_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        cpw_frame.grid(row=5, column=0, sticky="ew", pady=(0, 30))
+        cpw_frame.grid_columnconfigure(0, weight=1)
+        
+        self.setup_confirm = ctk.CTkEntry(cpw_frame, placeholder_text="Confirm your password", show="•", height=45)
+        self.setup_confirm.grid(row=0, column=0, sticky="ew")
+        
+        self.setup_confirm_eye = ctk.CTkButton(cpw_frame, text="👁️", width=45, height=45, fg_color="#333333", hover_color="#444444",
+                                              font=ctk.CTkFont(size=14),
+                                              command=lambda: self.toggle_password_visibility(self.setup_confirm, self.setup_confirm_eye))
+        self.setup_confirm_eye.grid(row=0, column=1, padx=(5, 0))
         
         self.setup_error = ctk.CTkLabel(frame, text="", text_color="#FF6B6B")
         self.setup_error.grid(row=6, column=0, pady=(0, 10))
@@ -453,9 +483,18 @@ class App(ctk.CTk):
             font=ctk.CTkFont(size=14), text_color="gray"
         ).grid(row=1, column=0, pady=(0, 50))
         
-        self.login_password = ctk.CTkEntry(frame, placeholder_text="Master Password", show="•", width=350, height=50)
-        self.login_password.grid(row=2, column=0, pady=(0, 20))
+        login_pw_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        login_pw_frame.grid(row=2, column=0, sticky="ew", pady=(0, 20))
+        login_pw_frame.grid_columnconfigure(0, weight=1)
+        
+        self.login_password = ctk.CTkEntry(login_pw_frame, placeholder_text="Master Password", show="•", width=300, height=50)
+        self.login_password.grid(row=0, column=0, sticky="ew")
         self.login_password.bind("<Return>", lambda e: self.handle_login())
+        
+        self.login_eye = ctk.CTkButton(login_pw_frame, text="👁️", width=50, height=50, fg_color="#333333", hover_color="#444444",
+                                      font=ctk.CTkFont(size=14),
+                                      command=lambda: self.toggle_password_visibility(self.login_password, self.login_eye))
+        self.login_eye.grid(row=0, column=1, padx=(5, 0))
         
         self.login_error = ctk.CTkLabel(frame, text="", text_color="#FF6B6B")
         self.login_error.grid(row=3, column=0, pady=(0, 10))
@@ -538,10 +577,15 @@ class App(ctk.CTk):
         pw_frame.grid_columnconfigure(0, weight=1)
         
         self.pw_pass = ctk.CTkEntry(pw_frame, placeholder_text="Password", height=40, show="•")
-        self.pw_pass.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.pw_pass.grid(row=0, column=0, sticky="ew")
+        
+        self.pwt_eye = ctk.CTkButton(pw_frame, text="👁️", width=40, height=40, fg_color="#333333", hover_color="#444444",
+                                    font=ctk.CTkFont(size=14),
+                                    command=lambda: self.toggle_password_visibility(self.pw_pass, self.pwt_eye))
+        self.pwt_eye.grid(row=0, column=1, padx=(5, 5))
         
         ctk.CTkButton(pw_frame, text="🎲", command=self.generate_password_field, width=40, height=40,
-                      fg_color="#7C3AED", hover_color="#6D28D9").grid(row=0, column=1)
+                      fg_color="#7C3AED", hover_color="#6D28D9").grid(row=0, column=2)
         
         ctk.CTkButton(form, text="Add", command=self.add_password_entry, width=80, height=40,
                       fg_color="#10B981", hover_color="#059669").grid(row=1, column=3, padx=(5, 15), pady=(0, 15))
@@ -693,15 +737,33 @@ class App(ctk.CTk):
                                         validate="key", validatecommand=(expiry_validate, '%P'))
         self.card_expiry.grid(row=1, column=3, padx=5, pady=(0, 15), sticky="ew")
         
+        cvv_frame = ctk.CTkFrame(form, fg_color="transparent")
+        cvv_frame.grid(row=1, column=4, padx=5, pady=(0, 15), sticky="ew")
+        cvv_frame.grid_columnconfigure(0, weight=1)
+        
         cvv_validate = self.register(self.validate_cvv)
-        self.card_cvv = ctk.CTkEntry(form, placeholder_text="CVV (4 digits)", height=40, width=60, show="•",
+        self.card_cvv = ctk.CTkEntry(cvv_frame, placeholder_text="CVV", height=40, show="•",
                                      validate="key", validatecommand=(cvv_validate, '%P'))
-        self.card_cvv.grid(row=1, column=4, padx=5, pady=(0, 15), sticky="ew")
+        self.card_cvv.grid(row=0, column=0, sticky="ew")
+        
+        self.cvv_eye = ctk.CTkButton(cvv_frame, text="👁️", width=30, height=40, fg_color="#333333", hover_color="#444444",
+                                    font=ctk.CTkFont(size=14),
+                                    command=lambda: self.toggle_password_visibility(self.card_cvv, self.cvv_eye))
+        self.cvv_eye.grid(row=0, column=1, padx=(2, 0))
+        
+        pin_frame = ctk.CTkFrame(form, fg_color="transparent")
+        pin_frame.grid(row=1, column=5, padx=5, pady=(0, 15), sticky="ew")
+        pin_frame.grid_columnconfigure(0, weight=1)
         
         pin_validate = self.register(self.validate_pin)
-        self.card_pin = ctk.CTkEntry(form, placeholder_text="PIN (4 digits)", height=40, width=60, show="•",
+        self.card_pin = ctk.CTkEntry(pin_frame, placeholder_text="PIN", height=40, show="•",
                                      validate="key", validatecommand=(pin_validate, '%P'))
-        self.card_pin.grid(row=1, column=5, padx=5, pady=(0, 15), sticky="ew")
+        self.card_pin.grid(row=0, column=0, sticky="ew")
+        
+        self.pin_eye = ctk.CTkButton(pin_frame, text="👁️", width=30, height=40, fg_color="#333333", hover_color="#444444",
+                                    font=ctk.CTkFont(size=14),
+                                    command=lambda: self.toggle_password_visibility(self.card_pin, self.pin_eye))
+        self.pin_eye.grid(row=0, column=1, padx=(2, 0))
         
         ctk.CTkButton(form, text="Add", command=self.add_card_entry, width=80, height=40,
                       fg_color="#10B981", hover_color="#059669").grid(row=1, column=6, padx=(5, 15), pady=(0, 15))
@@ -823,9 +885,25 @@ class App(ctk.CTk):
             val_frame.grid(row=i, column=1, sticky="ew", padx=10, pady=8)
             val_frame.grid_columnconfigure(0, weight=1)
             
-            ctk.CTkLabel(val_frame, text=value, anchor="w").grid(row=0, column=0, sticky="w")
-            ctk.CTkButton(val_frame, text="📋", width=30, height=25,
-                          command=lambda v=value: [pyperclip.copy(v), self.show_toast("Copied!")]).grid(row=0, column=1, padx=(10, 0))
+            # For Number, CVV, and PIN, use an entry with a toggle
+            if label in ["Number", "CVV", "PIN"]:
+                entry = ctk.CTkEntry(val_frame, fg_color="transparent", border_width=0, height=25)
+                entry.insert(0, value)
+                entry.configure(state="readonly", show="•")
+                entry.grid(row=0, column=0, sticky="ew")
+                
+                eye = ctk.CTkButton(val_frame, text="👁️", width=30, height=25, fg_color="#333333", hover_color="#444444",
+                                  font=ctk.CTkFont(size=14))
+                eye.configure(command=lambda e=entry, b=eye: self.toggle_password_visibility(e, b))
+                eye.grid(row=0, column=1, padx=(5, 0))
+                
+                copy_btn = ctk.CTkButton(val_frame, text="📋", width=30, height=25,
+                                        command=lambda v=value: [pyperclip.copy(v), self.show_toast("Copied!")])
+                copy_btn.grid(row=0, column=2, padx=(5, 0))
+            else:
+                ctk.CTkLabel(val_frame, text=value, anchor="w").grid(row=0, column=0, sticky="w")
+                ctk.CTkButton(val_frame, text="📋", width=30, height=25,
+                              command=lambda v=value: [pyperclip.copy(v), self.show_toast("Copied!")]).grid(row=0, column=1, padx=(10, 0))
         
         frame.grid_columnconfigure(1, weight=1)
         
