@@ -364,6 +364,8 @@ class App(ctk.CTk):
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         
+        self.toggle_font = ctk.CTkFont(size=14)
+        
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         
@@ -374,13 +376,12 @@ class App(ctk.CTk):
 
     def toggle_password_visibility(self, entry: ctk.CTkEntry, button: ctk.CTkButton):
         """Toggle the password visibility between masked and clear text."""
-        toggle_font = ctk.CTkFont(size=14)
         if entry.cget("show") == "•":
             entry.configure(show="")
-            button.configure(text="🔒", font=toggle_font)  # Show lock to indicate "click to mask"
+            button.configure(text="🔒", font=self.toggle_font)  # Show lock to indicate "click to mask"
         else:
             entry.configure(show="•")
-            button.configure(text="👁️", font=toggle_font)  
+            button.configure(text="👁️", font=self.toggle_font)  # Show eye to indicate "click to reveal"
         entry.focus_set()
     
     def clear_screen(self):
@@ -416,7 +417,7 @@ class App(ctk.CTk):
         self.setup_password.grid(row=0, column=0, sticky="ew")
         
         self.setup_eye = ctk.CTkButton(pw_frame, text="👁️", width=45, height=45, fg_color="#333333", hover_color="#444444",
-                                      font=ctk.CTkFont(size=14),
+                                      font=self.toggle_font, anchor="center",
                                       command=lambda: self.toggle_password_visibility(self.setup_password, self.setup_eye))
         self.setup_eye.grid(row=0, column=1, padx=(5, 0))
         
@@ -425,12 +426,13 @@ class App(ctk.CTk):
         cpw_frame = ctk.CTkFrame(frame, fg_color="transparent")
         cpw_frame.grid(row=5, column=0, sticky="ew", pady=(0, 30))
         cpw_frame.grid_columnconfigure(0, weight=1)
+        cpw_frame.grid_columnconfigure(1, weight=0, minsize=45) # Lock column width
         
         self.setup_confirm = ctk.CTkEntry(cpw_frame, placeholder_text="Confirm your password", show="•", height=45)
         self.setup_confirm.grid(row=0, column=0, sticky="ew")
         
         self.setup_confirm_eye = ctk.CTkButton(cpw_frame, text="👁️", width=45, height=45, fg_color="#333333", hover_color="#444444",
-                                              font=ctk.CTkFont(size=14),
+                                              font=self.toggle_font, anchor="center",
                                               command=lambda: self.toggle_password_visibility(self.setup_confirm, self.setup_confirm_eye))
         self.setup_confirm_eye.grid(row=0, column=1, padx=(5, 0))
         
@@ -486,13 +488,14 @@ class App(ctk.CTk):
         login_pw_frame = ctk.CTkFrame(frame, fg_color="transparent")
         login_pw_frame.grid(row=2, column=0, sticky="ew", pady=(0, 20))
         login_pw_frame.grid_columnconfigure(0, weight=1)
+        login_pw_frame.grid_columnconfigure(1, weight=0, minsize=50) # Lock column width
         
         self.login_password = ctk.CTkEntry(login_pw_frame, placeholder_text="Master Password", show="•", width=300, height=50)
         self.login_password.grid(row=0, column=0, sticky="ew")
         self.login_password.bind("<Return>", lambda e: self.handle_login())
         
         self.login_eye = ctk.CTkButton(login_pw_frame, text="👁️", width=50, height=50, fg_color="#333333", hover_color="#444444",
-                                      font=ctk.CTkFont(size=14),
+                                      font=self.toggle_font, anchor="center",
                                       command=lambda: self.toggle_password_visibility(self.login_password, self.login_eye))
         self.login_eye.grid(row=0, column=1, padx=(5, 0))
         
@@ -575,12 +578,13 @@ class App(ctk.CTk):
         pw_frame = ctk.CTkFrame(form, fg_color="transparent")
         pw_frame.grid(row=1, column=2, padx=5, pady=(0, 15), sticky="ew")
         pw_frame.grid_columnconfigure(0, weight=1)
+        pw_frame.grid_columnconfigure(1, weight=0, minsize=40) # Lock toggle column
         
         self.pw_pass = ctk.CTkEntry(pw_frame, placeholder_text="Password", height=40, show="•")
         self.pw_pass.grid(row=0, column=0, sticky="ew")
         
         self.pwt_eye = ctk.CTkButton(pw_frame, text="👁️", width=40, height=40, fg_color="#333333", hover_color="#444444",
-                                    font=ctk.CTkFont(size=14),
+                                    font=self.toggle_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.pw_pass, self.pwt_eye))
         self.pwt_eye.grid(row=0, column=1, padx=(5, 5))
         
@@ -681,21 +685,29 @@ class App(ctk.CTk):
         if new_value == "":
             return True
         
-        digits_only = new_value.replace("/", "")
-        
-        if not digits_only.isdigit():
-            return False
-        
         if len(new_value) > 5:
             return False
-        
-        if len(digits_only) >= 2:
-            if len(new_value) == 2:
-                self.card_expiry.delete(0, 'end')
-                self.card_expiry.insert(0, new_value + "/")
-                return False  
-            return new_value[2:3] == "/" if len(new_value) > 2 else True
-        
+            
+        try:
+            old_value = self.card_expiry.get()
+        except (AttributeError, RuntimeError):
+            old_value = ""
+
+        if len(new_value) < len(old_value):
+            return True
+
+        digits_only = new_value.replace("/", "")
+        if not digits_only.isdigit():
+            return False
+
+        if len(digits_only) == 2 and "/" not in new_value:
+             self.card_expiry.after(1, lambda: [self.card_expiry.delete(0, 'end'), self.card_expiry.insert(0, digits_only + "/")])
+             return True 
+             
+        if len(new_value) > 2:
+            if new_value[2:3] != "/":
+                return False
+                
         return True
     
     def validate_cvv(self, new_value):
@@ -740,6 +752,7 @@ class App(ctk.CTk):
         cvv_frame = ctk.CTkFrame(form, fg_color="transparent")
         cvv_frame.grid(row=1, column=4, padx=5, pady=(0, 15), sticky="ew")
         cvv_frame.grid_columnconfigure(0, weight=1)
+        cvv_frame.grid_columnconfigure(1, weight=0, minsize=30) # Lock toggle column
         
         cvv_validate = self.register(self.validate_cvv)
         self.card_cvv = ctk.CTkEntry(cvv_frame, placeholder_text="CVV", height=40, show="•",
@@ -747,13 +760,14 @@ class App(ctk.CTk):
         self.card_cvv.grid(row=0, column=0, sticky="ew")
         
         self.cvv_eye = ctk.CTkButton(cvv_frame, text="👁️", width=30, height=40, fg_color="#333333", hover_color="#444444",
-                                    font=ctk.CTkFont(size=14),
+                                    font=self.toggle_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.card_cvv, self.cvv_eye))
         self.cvv_eye.grid(row=0, column=1, padx=(2, 0))
         
         pin_frame = ctk.CTkFrame(form, fg_color="transparent")
         pin_frame.grid(row=1, column=5, padx=5, pady=(0, 15), sticky="ew")
         pin_frame.grid_columnconfigure(0, weight=1)
+        pin_frame.grid_columnconfigure(1, weight=0, minsize=30) # Lock toggle column
         
         pin_validate = self.register(self.validate_pin)
         self.card_pin = ctk.CTkEntry(pin_frame, placeholder_text="PIN", height=40, show="•",
@@ -761,7 +775,7 @@ class App(ctk.CTk):
         self.card_pin.grid(row=0, column=0, sticky="ew")
         
         self.pin_eye = ctk.CTkButton(pin_frame, text="👁️", width=30, height=40, fg_color="#333333", hover_color="#444444",
-                                    font=ctk.CTkFont(size=14),
+                                    font=self.toggle_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.card_pin, self.pin_eye))
         self.pin_eye.grid(row=0, column=1, padx=(2, 0))
         
@@ -885,15 +899,16 @@ class App(ctk.CTk):
             val_frame.grid(row=i, column=1, sticky="ew", padx=10, pady=8)
             val_frame.grid_columnconfigure(0, weight=1)
             
-            # For Number, CVV, and PIN, use an entry with a toggle
             if label in ["Number", "CVV", "PIN"]:
+                val_frame.grid_columnconfigure(1, weight=0, minsize=30) # Lock toggle column
+                
                 entry = ctk.CTkEntry(val_frame, fg_color="transparent", border_width=0, height=25)
                 entry.insert(0, value)
                 entry.configure(state="readonly", show="•")
                 entry.grid(row=0, column=0, sticky="ew")
                 
                 eye = ctk.CTkButton(val_frame, text="👁️", width=30, height=25, fg_color="#333333", hover_color="#444444",
-                                  font=ctk.CTkFont(size=14))
+                                  font=self.toggle_font, anchor="center")
                 eye.configure(command=lambda e=entry, b=eye: self.toggle_password_visibility(e, b))
                 eye.grid(row=0, column=1, padx=(5, 0))
                 
