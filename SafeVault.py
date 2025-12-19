@@ -103,6 +103,23 @@ class Backend:
             )
         """)
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entry_tags (
+                tag_id INTEGER,
+                entry_type TEXT NOT NULL,
+                entry_id INTEGER NOT NULL,
+                PRIMARY KEY (tag_id, entry_type, entry_id),
+                FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            )
+        """)
+        
         self.conn.commit()
     
     
@@ -253,7 +270,12 @@ class Backend:
     def get_all_cards(self) -> list[dict]:
         """Get all card entries (sensitive data remains encrypted)."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, label, holder_name, created_at FROM cards ORDER BY label")
+        cursor.execute("""
+            SELECT id, label, holder_name, created_at,
+                   card_number_encrypted, card_number_salt,
+                   expiry_encrypted, expiry_salt
+            FROM cards ORDER BY label
+        """)
         return [dict(row) for row in cursor.fetchall()]
     
     def get_card_details(self, card_id: int) -> dict:
@@ -337,6 +359,121 @@ class Backend:
         """Generate a cryptographically secure random password."""
         alphabet = string.ascii_letters + string.digits + string.punctuation
         return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+    def _get_or_create_tag(self, name: str) -> int:
+        """Get the ID of a tag by name, creating it if it doesn't exist."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id FROM tags WHERE name = ?", (name.strip().lower(),))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+        
+        cursor.execute("INSERT INTO tags (name) VALUES (?)", (name.strip().lower(),))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def add_tag_to_entry(self, entry_type: str, entry_id: int, tag_name: str):
+        """Associate a tag with an entry."""
+        tag_id = self._get_or_create_tag(tag_name)
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO entry_tags (tag_id, entry_type, entry_id) VALUES (?, ?, ?)",
+                (tag_id, entry_type, entry_id)
+            )
+            self.conn.commit()
+        except sqlite3.IntegrityError:
+            pass 
+
+    def get_tags_for_entry(self, entry_type: str, entry_id: int) -> list[str]:
+        """Get all tags associated with an entry."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT t.name FROM tags t
+            JOIN entry_tags et ON t.id = et.tag_id
+            WHERE et.entry_type = ? AND et.entry_id = ?
+        """, (entry_type, entry_id))
+        return [row[0] for row in cursor.fetchall()]
+
+    def get_all_tags(self) -> list[str]:
+        """Get all unique tags used in the vault."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM tags ORDER BY name")
+        return [row[0] for row in cursor.fetchall()]
+
+    def remove_tag_from_entry(self, entry_type: str, entry_id: int, tag_name: str):
+        """Remove a tag association from an entry."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            DELETE FROM entry_tags 
+            WHERE entry_type = ? AND entry_id = ? AND tag_id = (SELECT id FROM tags WHERE name = ?)
+        """, (entry_type, entry_id, tag_name.lower()))
+        self.conn.commit()
+
+    def search_vault(self, query: str) -> dict[str, list]:
+        """Search across all entries for the given query."""
+        query = query.lower()
+        results = {
+            'passwords': [],
+            'cards': [],
+            'notes': []
+        }
+        
+        cursor = self.conn.cursor()
+        
+        # Search passwords
+        cursor.execute("""
+            SELECT id, app_name, username, created_at FROM passwords 
+            WHERE lower(app_name) LIKE ? OR lower(username) LIKE ?
+        """, (f"%{query}%", f"%{query}%"))
+        results['passwords'] = [dict(row) for row in cursor.fetchall()]
+        
+        # Search cards
+        cursor.execute("""
+            SELECT id, label, holder_name, created_at,
+                   card_number_encrypted, card_number_salt,
+                   expiry_encrypted, expiry_salt
+            FROM cards 
+            WHERE lower(label) LIKE ? OR lower(holder_name) LIKE ?
+        """, (f"%{query}%", f"%{query}%"))
+        results['cards'] = [dict(row) for row in cursor.fetchall()]
+        
+        cursor.execute("""
+            SELECT id, title, created_at FROM notes 
+            WHERE lower(title) LIKE ?
+        """, (f"%{query}%",))
+        results['notes'] = [dict(row) for row in cursor.fetchall()]
+        
+        cursor.execute("""
+            SELECT DISTINCT entry_id, entry_type FROM entry_tags et
+            JOIN tags t ON et.tag_id = t.id
+            WHERE t.name LIKE ?
+        """, (f"%{query}%",))
+        tag_matches = cursor.fetchall()
+        
+        for entry_id, entry_type in tag_matches:
+            if entry_type == 'password':
+                if not any(r['id'] == entry_id for r in results['passwords']):
+                    cursor.execute("SELECT id, app_name, username, created_at FROM passwords WHERE id = ?", (entry_id,))
+                    row = cursor.fetchone()
+                    if row: results['passwords'].append(dict(row))
+            elif entry_type == 'card':
+                if not any(r['id'] == entry_id for r in results['cards']):
+                    cursor.execute("""
+                        SELECT id, label, holder_name, created_at,
+                               card_number_encrypted, card_number_salt,
+                               expiry_encrypted, expiry_salt
+                        FROM cards WHERE id = ?
+                    """, (entry_id,))
+                    row = cursor.fetchone()
+                    if row: results['cards'].append(dict(row))
+            elif entry_type == 'note':
+                if not any(r['id'] == entry_id for r in results['notes']):
+                    cursor.execute("SELECT id, title, created_at FROM notes WHERE id = ?", (entry_id,))
+                    row = cursor.fetchone()
+                    if row: results['notes'].append(dict(row))
+
+        return results
     
     def export_vault(self, dest_path: str):
         """Create an encrypted backup of the database file."""
@@ -588,6 +725,14 @@ class App(ctk.CTk):
         ctk.CTkLabel(
             header, text="🔐 SafeVault", font=ctk.CTkFont(size=24, weight="bold")
         ).grid(row=0, column=0, padx=20, pady=15)
+
+        self.search_var = ctk.StringVar()
+        self.search_var.trace_add("write", self.handle_search)
+        self.search_entry = ctk.CTkEntry(
+            header, placeholder_text="🔎 Search your vault (apps, cards, notes...)", 
+            textvariable=self.search_var, width=400, height=35
+        )
+        self.search_entry.grid(row=0, column=1, padx=20, pady=15, sticky="ew")
         
         ctk.CTkButton(
             header, text="🔒 Lock", command=self.show_login_screen,
@@ -644,8 +789,11 @@ class App(ctk.CTk):
         ctk.CTkButton(pw_frame, text="🎲", command=self.generate_password_field, width=40, height=40,
                       fg_color="#7C3AED", hover_color="#6D28D9").grid(row=0, column=2)
         
+        self.pw_tags = ctk.CTkEntry(form, placeholder_text="Tags (comma separated)", height=40)
+        self.pw_tags.grid(row=2, column=0, columnspan=2, padx=(15, 5), pady=(0, 15), sticky="ew")
+
         ctk.CTkButton(form, text="Add", command=self.add_password_entry, width=80, height=40,
-                      fg_color="#10B981", hover_color="#059669").grid(row=1, column=3, padx=(5, 15), pady=(0, 15))
+                      fg_color="#10B981", hover_color="#059669").grid(row=2, column=3, padx=(5, 15), pady=(0, 15))
         
         list_frame = ctk.CTkFrame(tab)
         list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -661,15 +809,16 @@ class App(ctk.CTk):
         
         self.refresh_passwords()
     
-    def refresh_passwords(self):
+    def refresh_passwords(self, entries=None):
         """Refresh the passwords list."""
         for widget in self.pw_scroll.winfo_children():
             widget.destroy()
         
-        entries = self.backend.get_all_passwords()
+        if entries is None:
+            entries = self.backend.get_all_passwords()
         
         if not entries:
-            ctk.CTkLabel(self.pw_scroll, text="No passwords saved yet.", text_color="gray").grid(row=0, column=0, pady=30)
+            ctk.CTkLabel(self.pw_scroll, text="No matching passwords found.", text_color="gray").grid(row=0, column=0, pady=30)
             return
         
         for idx, entry in enumerate(entries):
@@ -677,10 +826,21 @@ class App(ctk.CTk):
             row.grid(row=idx, column=0, sticky="ew", pady=3)
             row.grid_columnconfigure(1, weight=1)
             
-            ctk.CTkLabel(row, text=entry['app_name'], font=ctk.CTkFont(weight="bold"), anchor="w").grid(
-                row=0, column=0, padx=15, pady=10, sticky="w")
-            ctk.CTkLabel(row, text=entry['username'], text_color="gray", anchor="w").grid(
-                row=0, column=1, padx=10, pady=10, sticky="ew")
+            info_frame = ctk.CTkFrame(row, fg_color="transparent")
+            info_frame.grid(row=0, column=0, padx=15, pady=5, sticky="w")
+            
+            ctk.CTkLabel(info_frame, text=entry['app_name'], font=ctk.CTkFont(weight="bold"), anchor="w").pack(side="top", anchor="w")
+            ctk.CTkLabel(info_frame, text=entry['username'], text_color="gray", anchor="w").pack(side="top", anchor="w")
+            
+            tags = self.backend.get_tags_for_entry('password', entry['id'])
+            if tags:
+                tags_frame = ctk.CTkFrame(row, fg_color="transparent")
+                tags_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+                for tag in tags:
+                    ctk.CTkLabel(
+                        tags_frame, text=f" #{tag}", font=ctk.CTkFont(size=10),
+                        text_color="#3B82F6", anchor="w"
+                    ).pack(side="left", padx=2)
             
             ctk.CTkButton(row, text="📋", command=lambda eid=entry['id']: self.copy_password(eid),
                           width=40, height=32, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
@@ -693,14 +853,23 @@ class App(ctk.CTk):
         user = self.pw_user.get().strip()
         pw = self.pw_pass.get()
         
+        tags = self.pw_tags.get().strip()
+        
         if not all([app, user, pw]):
             self.show_toast("Please fill all fields", error=True)
             return
         
-        self.backend.add_password(app, user, pw)
+        entry_id = self.backend.add_password(app, user, pw)
+        
+        if tags:
+            for tag in tags.split(','):
+                if tag.strip():
+                    self.backend.add_tag_to_entry('password', entry_id, tag.strip())
+        
         self.pw_app.delete(0, 'end')
         self.pw_user.delete(0, 'end')
         self.pw_pass.delete(0, 'end')
+        self.pw_tags.delete(0, 'end')
         self.refresh_passwords()
         self.show_toast("Password added!")
     
@@ -832,8 +1001,11 @@ class App(ctk.CTk):
                                     command=lambda: self.toggle_password_visibility(self.card_pin, self.pin_eye))
         self.pin_eye.grid(row=0, column=1, padx=(5, 0))
         
+        self.card_tags = ctk.CTkEntry(form, placeholder_text="Tags (comma separated)", height=40)
+        self.card_tags.grid(row=2, column=0, columnspan=3, padx=(15, 5), pady=(0, 15), sticky="ew")
+
         ctk.CTkButton(form, text="Add", command=self.add_card_entry, width=80, height=40,
-                      fg_color="#10B981", hover_color="#059669").grid(row=1, column=6, padx=(5, 15), pady=(0, 15))
+                      fg_color="#10B981", hover_color="#059669").grid(row=2, column=6, padx=(5, 15), pady=(0, 15))
         
         list_frame = ctk.CTkFrame(tab)
         list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -849,15 +1021,16 @@ class App(ctk.CTk):
         
         self.refresh_cards()
     
-    def refresh_cards(self):
+    def refresh_cards(self, cards=None):
         """Refresh the cards list."""
         for widget in self.card_scroll.winfo_children():
             widget.destroy()
         
-        cards = self.backend.get_all_cards()
+        if cards is None:
+            cards = self.backend.get_all_cards()
         
         if not cards:
-            ctk.CTkLabel(self.card_scroll, text="No cards saved yet.", text_color="gray").grid(row=0, column=0, pady=30)
+            ctk.CTkLabel(self.card_scroll, text="No matching cards found.", text_color="gray").grid(row=0, column=0, pady=30)
             return
         
         for idx, card in enumerate(cards):
@@ -865,10 +1038,32 @@ class App(ctk.CTk):
             row.grid(row=idx, column=0, sticky="ew", pady=3)
             row.grid_columnconfigure(1, weight=1)
             
-            ctk.CTkLabel(row, text=f"💳 {card['label']}", font=ctk.CTkFont(weight="bold"), anchor="w").grid(
-                row=0, column=0, padx=15, pady=10, sticky="w")
-            ctk.CTkLabel(row, text=card['holder_name'], text_color="gray", anchor="w").grid(
-                row=0, column=1, padx=10, pady=10, sticky="ew")
+            # Info section
+            info_frame = ctk.CTkFrame(row, fg_color="transparent")
+            info_frame.grid(row=0, column=0, padx=15, pady=5, sticky="w")
+            
+            ctk.CTkLabel(info_frame, text=f"💳 {card['label']}", font=ctk.CTkFont(weight="bold"), anchor="w").pack(side="top", anchor="w")
+            
+            # Decrypt and show basic info
+            try:
+                card_num = self.backend.decrypt(card['card_number_encrypted'], card['card_number_salt'])
+                masked_num = f"**** **** **** {card_num[-4:]}"
+                expiry = self.backend.decrypt(card['expiry_encrypted'], card['expiry_salt'])
+                details_text = f"{card['holder_name']}  |  {masked_num}  |  Exp: {expiry}"
+                ctk.CTkLabel(info_frame, text=details_text, text_color="gray", anchor="w").pack(side="top", anchor="w")
+            except Exception:
+                ctk.CTkLabel(info_frame, text=card['holder_name'], text_color="gray", anchor="w").pack(side="top", anchor="w")
+            
+            # Tags section
+            tags = self.backend.get_tags_for_entry('card', card['id'])
+            if tags:
+                tags_frame = ctk.CTkFrame(row, fg_color="transparent")
+                tags_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+                for tag in tags:
+                    ctk.CTkLabel(
+                        tags_frame, text=f" #{tag}", font=ctk.CTkFont(size=10),
+                        text_color="#3B82F6", anchor="w"
+                    ).pack(side="left", padx=2)
             
             ctk.CTkButton(row, text="👁️ View", command=lambda cid=card['id']: self.view_card(cid),
                           width=70, height=32, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
@@ -883,6 +1078,8 @@ class App(ctk.CTk):
         expiry = self.card_expiry.get().strip()
         cvv = self.card_cvv.get().strip()
         pin = self.card_pin.get().strip()
+        
+        tags = self.card_tags.get().strip()
         
         if not all([label, holder, number, expiry, cvv, pin]):
             self.show_toast("Please fill all fields", error=True)
@@ -905,8 +1102,13 @@ class App(ctk.CTk):
             return
         
         try:
-            self.backend.add_card(label, holder, number, expiry, cvv, pin)
-            for entry in [self.card_label, self.card_holder, self.card_number, self.card_expiry, self.card_cvv, self.card_pin]:
+            entry_id = self.backend.add_card(label, holder, number, expiry, cvv, pin)
+            if tags:
+                for tag in tags.split(','):
+                    if tag.strip():
+                        self.backend.add_tag_to_entry('card', entry_id, tag.strip())
+            
+            for entry in [self.card_label, self.card_holder, self.card_number, self.card_expiry, self.card_cvv, self.card_pin, self.card_tags]:
                 entry.delete(0, 'end')
             self.refresh_cards()
             self.show_toast("Card added successfully!")
@@ -923,7 +1125,7 @@ class App(ctk.CTk):
         
         popup = ctk.CTkToplevel(self)
         popup.title(f"Card: {details['label']}")
-        popup.geometry("400x300")
+        popup.geometry("450x450")
         popup.transient(self)
         popup.grab_set()
         
@@ -938,8 +1140,8 @@ class App(ctk.CTk):
         info = [
             ("Label", details['label']),
             ("Holder", details['holder_name']),
-            ("Number", details['card_number']),
-            ("Expiry", details['expiry']),
+            ("Card Number", details['card_number']),
+            ("Expiry (MM/YY)", details['expiry']),
             ("CVV", details['cvv']),
             ("PIN", details['pin'])
         ]
@@ -952,7 +1154,7 @@ class App(ctk.CTk):
             val_frame.grid(row=i, column=1, sticky="ew", padx=10, pady=8)
             val_frame.grid_columnconfigure(0, weight=1)
             
-            if label in ["Number", "CVV", "PIN"]:
+            if label in ["Card Number", "CVV", "PIN"]:
                 val_frame.grid_columnconfigure(1, weight=0, minsize=30) # Lock toggle column
                 
                 entry = ctk.CTkEntry(val_frame, fg_color="transparent", border_width=0, height=25)
@@ -1000,8 +1202,11 @@ class App(ctk.CTk):
         self.note_content = ctk.CTkEntry(form, placeholder_text="Secret content...", height=40)
         self.note_content.grid(row=1, column=1, padx=5, pady=(0, 15), sticky="ew")
         
+        self.note_tags = ctk.CTkEntry(form, placeholder_text="Tags (comma separated)", height=40)
+        self.note_tags.grid(row=2, column=0, columnspan=2, padx=(15, 5), pady=(0, 15), sticky="ew")
+
         ctk.CTkButton(form, text="Add", command=self.add_note_entry, width=80, height=40,
-                      fg_color="#10B981", hover_color="#059669").grid(row=1, column=2, padx=(5, 15), pady=(0, 15))
+                      fg_color="#10B981", hover_color="#059669").grid(row=2, column=2, padx=(5, 15), pady=(0, 15))
         
         list_frame = ctk.CTkFrame(tab)
         list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -1017,42 +1222,63 @@ class App(ctk.CTk):
         
         self.refresh_notes()
     
-    def refresh_notes(self):
+    def refresh_notes(self, notes=None):
         """Refresh the notes list."""
         for widget in self.note_scroll.winfo_children():
             widget.destroy()
         
-        notes = self.backend.get_all_notes()
+        if notes is None:
+            notes = self.backend.get_all_notes()
         
         if not notes:
-            ctk.CTkLabel(self.note_scroll, text="No notes saved yet.", text_color="gray").grid(row=0, column=0, pady=30)
+            ctk.CTkLabel(self.note_scroll, text="No matching notes found.", text_color="gray").grid(row=0, column=0, pady=30)
             return
         
         for idx, note in enumerate(notes):
             row = ctk.CTkFrame(self.note_scroll)
             row.grid(row=idx, column=0, sticky="ew", pady=3)
-            row.grid_columnconfigure(0, weight=1)
+            row.grid_columnconfigure(1, weight=1)
             
-            ctk.CTkLabel(row, text=f"📝 {note['title']}", font=ctk.CTkFont(weight="bold"), anchor="w").grid(
-                row=0, column=0, padx=15, pady=10, sticky="ew")
+            info_frame = ctk.CTkFrame(row, fg_color="transparent")
+            info_frame.grid(row=0, column=0, padx=15, pady=5, sticky="w")
+            
+            ctk.CTkLabel(info_frame, text=f"📝 {note['title']}", font=ctk.CTkFont(weight="bold"), anchor="w").pack(side="top", anchor="w")
+            
+            tags = self.backend.get_tags_for_entry('note', note['id'])
+            if tags:
+                tags_frame = ctk.CTkFrame(row, fg_color="transparent")
+                tags_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+                for tag in tags:
+                    ctk.CTkLabel(
+                        tags_frame, text=f" #{tag}", font=ctk.CTkFont(size=10),
+                        text_color="#3B82F6", anchor="w"
+                    ).pack(side="left", padx=2)
             
             ctk.CTkButton(row, text="👁️ View", command=lambda nid=note['id']: self.view_note(nid),
-                          width=70, height=32, fg_color="#3B82F6").grid(row=0, column=1, padx=5, pady=10)
+                          width=70, height=32, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
             ctk.CTkButton(row, text="🗑️", command=lambda nid=note['id']: self.delete_note(nid),
-                          width=40, height=32, fg_color="#EF4444").grid(row=0, column=2, padx=(5, 15), pady=10)
+                          width=40, height=32, fg_color="#EF4444").grid(row=0, column=3, padx=(5, 15), pady=10)
     
     def add_note_entry(self):
         """Add a new note."""
         title = self.note_title.get().strip()
         content = self.note_content.get().strip()
         
+        tags = self.note_tags.get().strip()
+        
         if not all([title, content]):
             self.show_toast("Please fill all fields", error=True)
             return
         
-        self.backend.add_note(title, content)
+        entry_id = self.backend.add_note(title, content)
+        if tags:
+            for tag in tags.split(','):
+                if tag.strip():
+                    self.backend.add_tag_to_entry('note', entry_id, tag.strip())
+        
         self.note_title.delete(0, 'end')
         self.note_content.delete(0, 'end')
+        self.note_tags.delete(0, 'end')
         self.refresh_notes()
         self.show_toast("Note added!")
     
@@ -1199,6 +1425,20 @@ class App(ctk.CTk):
         self.show_toast("Note deleted")
     
     
+    def handle_search(self, *args):
+        """Handle global search input change."""
+        query = self.search_var.get().strip()
+        if not query:
+            self.refresh_passwords()
+            self.refresh_cards()
+            self.refresh_notes()
+            return
+            
+        results = self.backend.search_vault(query)
+        self.refresh_passwords(results['passwords'])
+        self.refresh_cards(results['cards'])
+        self.refresh_notes(results['notes'])
+
     def show_toast(self, message: str, error: bool = False):
         """Show a temporary toast notification."""
         toast = ctk.CTkLabel(
