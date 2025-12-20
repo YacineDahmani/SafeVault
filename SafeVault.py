@@ -360,6 +360,235 @@ class Backend:
         alphabet = string.ascii_letters + string.digits + string.punctuation
         return ''.join(secrets.choice(alphabet) for _ in range(length))
 
+    
+    COMMON_PASSWORD_HASHES = {
+        
+        "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+        "5e884898da28047d9d7d64f3e9a91ee09aa tried5d4d6dae5e8e31ea0dbf4eb79f8db5e18",
+        "ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f",
+        "65e84be33532fb784c48129675f9eff3a682b27168c0ea744b2cf58ee02337c5",
+        "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225",
+        "5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5",
+        "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+        "bcb15f821479b4d5772bd0ca866c00ad5f926e3580720659cc80d39c9d09802a",
+        "20eabe5d64b0e216796e834f52d61fd0b70332fc",
+        "8621ffdbc5698829397d97767ac13db3f096fc2a",
+    }
+    
+    COMMON_PASSWORDS = {
+        "123456", "password", "12345678", "qwerty", "123456789", "12345", "1234",
+        "111111", "1234567", "dragon", "123123", "baseball", "abc123", "football",
+        "monkey", "letmein", "shadow", "master", "666666", "qwertyuiop", "123321",
+        "mustang", "1234567890", "michael", "654321", "superman", "1qaz2wsx",
+        "7777777", "121212", "000000", "qazwsx", "123qwe", "killer", "trustno1",
+        "jordan", "jennifer", "zxcvbnm", "asdfgh", "hunter", "buster", "soccer",
+        "harley", "batman", "andrew", "tigger", "sunshine", "iloveyou", "2000",
+        "charlie", "robert", "thomas", "hockey", "ranger", "daniel", "starwars",
+        "klaster", "112233", "george", "computer", "michelle", "jessica", "pepper",
+        "1111", "zxcvbn", "555555", "11111111", "131313", "freedom", "777777",
+        "pass", "maggie", "159753", "aaaaaa", "ginger", "princess", "joshua",
+        "cheese", "amanda", "summer", "love", "ashley", "nicole", "chelsea",
+        "biteme", "matthew", "access", "yankees", "987654321", "dallas", "austin",
+        "thunder", "taylor", "matrix", "mobilemail", "mom", "monitor", "monitoring",
+        "montana", "moon", "moscow", "password1", "password123", "password12",
+        "passw0rd", "admin", "admin123", "root", "toor", "pass123", "test",
+        "guest", "master123", "changeme", "welcome", "welcome1", "welcome123",
+        "login", "user", "user123", "default", "hello", "hello123"
+    }
+
+    def calculate_password_strength(self, password: str) -> dict:
+        """
+        Calculate password strength score and identify issues.
+        Returns: {score: 0-100, rating: str, issues: list[str]}
+        """
+        score = 0
+        issues = []
+        
+        length = len(password)
+        if length >= 16:
+            score += 30
+        elif length >= 12:
+            score += 25
+        elif length >= 10:
+            score += 20
+        elif length >= 8:
+            score += 15
+        else:
+            score += length * 2
+            issues.append(f"Too short ({length} chars, need 8+)")
+        
+        has_lower = bool(re.search(r'[a-z]', password))
+        has_upper = bool(re.search(r'[A-Z]', password))
+        has_digit = bool(re.search(r'\d', password))
+        has_special = bool(re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password))
+        
+        variety_count = sum([has_lower, has_upper, has_digit, has_special])
+        score += variety_count * 10
+        
+        if not has_upper:
+            issues.append("No uppercase letters")
+        if not has_lower:
+            issues.append("No lowercase letters")
+        if not has_digit:
+            issues.append("No numbers")
+        if not has_special:
+            issues.append("No special characters")
+        
+
+        sequential = ['123', '234', '345', '456', '567', '678', '789', '890',
+                     'abc', 'bcd', 'cde', 'def', 'efg', 'fgh', 'ghi', 'hij',
+                     'qwe', 'wer', 'ert', 'rty', 'asd', 'sdf', 'dfg', 'zxc']
+        for seq in sequential:
+            if seq in password.lower():
+                score -= 10
+                issues.append("Contains sequential pattern")
+                break
+        
+        if re.search(r'(.)\1{2,}', password):
+            score -= 10
+            issues.append("Contains repeated characters")
+        
+        keyboard_patterns = ['qwerty', 'asdfgh', 'zxcvbn', '!@#$%^', 'qazwsx']
+        for pattern in keyboard_patterns:
+            if pattern in password.lower():
+                score -= 10
+                issues.append("Contains keyboard pattern")
+                break
+        
+        unique_chars = len(set(password))
+        entropy_bonus = min(30, unique_chars * 2)
+        score += entropy_bonus
+        
+        score = max(0, min(100, score))
+        
+        if score >= 80:
+            rating = "Strong"
+        elif score >= 60:
+            rating = "Good"
+        elif score >= 40:
+            rating = "Fair"
+        else:
+            rating = "Weak"
+        
+        return {
+            'score': score,
+            'rating': rating,
+            'issues': issues
+        }
+
+    def get_all_decrypted_passwords(self) -> list[dict]:
+        """Get all password entries with decrypted passwords for internal analysis."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, app_name, username, password_encrypted, salt FROM passwords")
+        results = []
+        for row in cursor.fetchall():
+            try:
+                decrypted = self.decrypt(row['password_encrypted'], row['salt'])
+                results.append({
+                    'id': row['id'],
+                    'app_name': row['app_name'],
+                    'username': row['username'],
+                    'password': decrypted
+                })
+            except Exception:
+                continue
+        return results
+
+    def detect_duplicate_passwords(self) -> list[list[dict]]:
+        """
+        Detect passwords that are reused across multiple entries.
+        Returns list of groups, where each group contains entries with the same password.
+        """
+        entries = self.get_all_decrypted_passwords()
+        
+        password_groups = {}
+        for entry in entries:
+            pw = entry['password']
+            if pw not in password_groups:
+                password_groups[pw] = []
+            password_groups[pw].append({
+                'id': entry['id'],
+                'app_name': entry['app_name'],
+                'username': entry['username']
+            })
+        
+        return [group for group in password_groups.values() if len(group) > 1]
+
+    def check_common_password(self, password: str) -> bool:
+        """Check if password matches a commonly breached password (local check only)."""
+        return password.lower() in self.COMMON_PASSWORDS
+
+    def run_security_scan(self) -> dict:
+        """
+        Run comprehensive security scan on all passwords.
+        Returns structured report with all findings.
+        """
+        entries = self.get_all_decrypted_passwords()
+        
+        strength_distribution = {'weak': 0, 'fair': 0, 'good': 0, 'strong': 0}
+        weak_passwords = []
+        common_passwords = []
+        total_score = 0
+        
+        for entry in entries:
+            strength = self.calculate_password_strength(entry['password'])
+            rating_key = strength['rating'].lower()
+            strength_distribution[rating_key] += 1
+            total_score += strength['score']
+            
+            if strength['rating'] in ['Weak', 'Fair']:
+                weak_passwords.append({
+                    'id': entry['id'],
+                    'app_name': entry['app_name'],
+                    'score': strength['score'],
+                    'rating': strength['rating'],
+                    'issues': strength['issues']
+                })
+            
+            if self.check_common_password(entry['password']):
+                common_passwords.append({
+                    'id': entry['id'],
+                    'app_name': entry['app_name']
+                })
+        
+        duplicate_groups = self.detect_duplicate_passwords()
+        
+        overall_score = (total_score / len(entries)) if entries else 0
+        
+        return {
+            'total_passwords': len(entries),
+            'overall_score': round(overall_score, 1),
+            'strength_distribution': strength_distribution,
+            'weak_passwords': weak_passwords,
+            'duplicate_groups': duplicate_groups,
+            'common_passwords': common_passwords,
+            'scan_date': datetime.now().isoformat()
+        }
+
+    def export_encrypted_report(self, report: dict, file_path: str) -> bool:
+        """
+        Export security scan report as an encrypted file.
+        Can only be decrypted when vault is unlocked.
+        """
+        import json
+        
+        if not self._encryption_key:
+            raise RuntimeError("No encryption key. Please login first.")
+        
+        try:
+            report_json = json.dumps(report, indent=2)
+            
+            salt = os.urandom(16)
+            encrypted_data = self.encrypt(report_json, salt)
+            
+            with open(file_path, 'wb') as f:
+                f.write(salt)
+                f.write(encrypted_data)
+            
+            return True
+        except Exception as e:
+            raise RuntimeError(f"Failed to export report: {e}")
+
     def _get_or_create_tag(self, name: str) -> int:
         """Get the ID of a tag by name, creating it if it doesn't exist."""
         cursor = self.conn.cursor()
@@ -1324,8 +1553,21 @@ class App(ctk.CTk):
         container.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
         container.grid_columnconfigure(0, weight=1)
         
+        security_frame = ctk.CTkFrame(container)
+        security_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        security_frame.grid_columnconfigure(0, weight=1)
+        
+        ctk.CTkLabel(security_frame, text="🛡️Password Security", font=ctk.CTkFont(size=18, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+        
+        ctk.CTkLabel(security_frame, text="Scan your vault for weak, reused, or potentially breached passwords. All checks are performed locally.",
+                     text_color="gray", wraplength=600, justify="left").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 20))
+        
+        ctk.CTkButton(security_frame, text="🔍 Scan Vault", command=self.show_security_scan_popup,
+                      height=40, fg_color="#10B981", hover_color="#059669").grid(row=2, column=0, sticky="w", padx=20, pady=(0, 20))
+        
         backup_frame = ctk.CTkFrame(container)
-        backup_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        backup_frame.grid(row=1, column=0, sticky="ew", pady=(0, 20))
         backup_frame.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(backup_frame, text="💾 Backup & Restore", font=ctk.CTkFont(size=18, weight="bold")).grid(
@@ -1344,7 +1586,7 @@ class App(ctk.CTk):
                       height=40, fg_color="#6366F1", hover_color="#4F46E5").pack(side="left")
         
         export_frame = ctk.CTkFrame(container)
-        export_frame.grid(row=1, column=0, sticky="ew")
+        export_frame.grid(row=2, column=0, sticky="ew")
         export_frame.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(export_frame, text="📂 Data Export", font=ctk.CTkFont(size=18, weight="bold")).grid(
@@ -1424,7 +1666,196 @@ class App(ctk.CTk):
         self.refresh_notes()
         self.show_toast("Note deleted")
     
-    
+    def show_security_scan_popup(self):
+        """Display security scan results in a popup modal."""
+        try:
+            report = self.backend.run_security_scan()
+        except Exception as e:
+            self.show_toast(f"Scan failed: {e}", error=True)
+            return
+        
+        self._current_report = report
+        
+        popup = ctk.CTkToplevel(self)
+        popup.title("🛡️Password Security Scan")
+        popup.geometry("700x650")
+        popup.resizable(True, True)
+        popup.transient(self)
+        popup.grab_set()
+        
+        popup.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - 700) // 2
+        y = self.winfo_y() + (self.winfo_height() - 650) // 2
+        popup.geometry(f"+{x}+{y}")
+        
+        main_frame = ctk.CTkScrollableFrame(popup, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        main_frame.grid_columnconfigure(0, weight=1)
+        
+        score_frame = ctk.CTkFrame(main_frame)
+        score_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+        score_frame.grid_columnconfigure(0, weight=1)
+        
+        total = report['total_passwords']
+        score = report['overall_score']
+        
+        if total == 0:
+            ctk.CTkLabel(score_frame, text="No passwords found in vault", 
+                        font=ctk.CTkFont(size=16), text_color="gray").grid(
+                            row=0, column=0, padx=20, pady=20)
+        else:
+            if score >= 80:
+                score_color = "#10B981"  
+            elif score >= 60:
+                score_color = "#3B82F6"  
+            elif score >= 40:
+                score_color = "#F59E0B"  
+            else:
+                score_color = "#EF4444"  
+            
+            ctk.CTkLabel(score_frame, text=f"Overall Security Score: {score}%",
+                        font=ctk.CTkFont(size=20, weight="bold")).grid(
+                            row=0, column=0, padx=20, pady=(20, 10), sticky="w")
+            
+            progress = ctk.CTkProgressBar(score_frame, width=400, height=20)
+            progress.set(score / 100)
+            progress.configure(progress_color=score_color)
+            progress.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="w")
+        
+        if total > 0:
+            dist_frame = ctk.CTkFrame(main_frame)
+            dist_frame.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+            dist_frame.grid_columnconfigure(0, weight=1)
+            
+            ctk.CTkLabel(dist_frame, text=f"Password Strength Distribution ({total} passwords)",
+                        font=ctk.CTkFont(size=16, weight="bold")).grid(
+                            row=0, column=0, padx=20, pady=(15, 10), sticky="w")
+            
+            dist = report['strength_distribution']
+            colors = {
+                'strong': "#10B981",
+                'good': "#3B82F6", 
+                'fair': "#F59E0B",
+                'weak': "#EF4444"
+            }
+            labels = {'strong': '💪 Strong', 'good': '👍 Good', 'fair': '⚠️ Fair', 'weak': '❌ Weak'}
+            
+            for idx, (key, label) in enumerate(labels.items()):
+                count = dist[key]
+                pct = (count / total * 100) if total > 0 else 0
+                
+                row_frame = ctk.CTkFrame(dist_frame, fg_color="transparent")
+                row_frame.grid(row=idx+1, column=0, sticky="ew", padx=20, pady=2)
+                row_frame.grid_columnconfigure(1, weight=1)
+                
+                ctk.CTkLabel(row_frame, text=f"{label}", width=100, anchor="w").grid(row=0, column=0, sticky="w")
+                
+                bar = ctk.CTkProgressBar(row_frame, width=300, height=15)
+                bar.set(pct / 100)
+                bar.configure(progress_color=colors[key])
+                bar.grid(row=0, column=1, padx=(10, 10), sticky="ew")
+                
+                ctk.CTkLabel(row_frame, text=f"{count} ({pct:.0f}%)", width=80).grid(row=0, column=2, sticky="e")
+            
+            ctk.CTkLabel(dist_frame, text="").grid(row=5, column=0, pady=(5, 10))
+        
+        issues_count = len(report['weak_passwords']) + len(report['duplicate_groups']) + len(report['common_passwords'])
+        
+        issues_frame = ctk.CTkFrame(main_frame)
+        issues_frame.grid(row=2, column=0, sticky="ew", pady=(0, 15))
+        issues_frame.grid_columnconfigure(0, weight=1)
+        
+        if issues_count == 0:
+            ctk.CTkLabel(issues_frame, text="✅ No issues found! Your passwords look secure.",
+                        font=ctk.CTkFont(size=14), text_color="#10B981").grid(
+                            row=0, column=0, padx=20, pady=20)
+        else:
+            ctk.CTkLabel(issues_frame, text=f"⚠️ Issues Found ({issues_count})",
+                        font=ctk.CTkFont(size=16, weight="bold")).grid(
+                            row=0, column=0, padx=20, pady=(15, 10), sticky="w")
+            
+            row_idx = 1
+            
+            if report['weak_passwords']:
+                ctk.CTkLabel(issues_frame, text=f"🔴 {len(report['weak_passwords'])} Weak Passwords",
+                            font=ctk.CTkFont(size=14, weight="bold"), text_color="#EF4444").grid(
+                                row=row_idx, column=0, padx=20, pady=(10, 5), sticky="w")
+                row_idx += 1
+                
+                for wp in report['weak_passwords'][:5]:  
+                    issues_text = ", ".join(wp['issues'][:2]) if wp['issues'] else "Low complexity"
+                    ctk.CTkLabel(issues_frame, text=f"    • {wp['app_name']} - {issues_text}",
+                                text_color="gray", wraplength=550, justify="left").grid(
+                                    row=row_idx, column=0, padx=20, sticky="w")
+                    row_idx += 1
+                
+                if len(report['weak_passwords']) > 5:
+                    ctk.CTkLabel(issues_frame, text=f"    ... and {len(report['weak_passwords']) - 5} more",
+                                text_color="gray").grid(row=row_idx, column=0, padx=20, sticky="w")
+                    row_idx += 1
+            
+            if report['duplicate_groups']:
+                total_dupes = sum(len(g) for g in report['duplicate_groups'])
+                ctk.CTkLabel(issues_frame, text=f"🟡 {len(report['duplicate_groups'])} Reused Password Groups ({total_dupes} entries)",
+                            font=ctk.CTkFont(size=14, weight="bold"), text_color="#F59E0B").grid(
+                                row=row_idx, column=0, padx=20, pady=(10, 5), sticky="w")
+                row_idx += 1
+                
+                for group in report['duplicate_groups'][:3]: 
+                    apps = ", ".join([e['app_name'] for e in group[:3]])
+                    if len(group) > 3:
+                        apps += f" +{len(group) - 3} more"
+                    ctk.CTkLabel(issues_frame, text=f"    • {apps}",
+                                text_color="gray", wraplength=550, justify="left").grid(
+                                    row=row_idx, column=0, padx=20, sticky="w")
+                    row_idx += 1
+            
+            if report['common_passwords']:
+                ctk.CTkLabel(issues_frame, text=f"🔴 {len(report['common_passwords'])} Potentially Breached Passwords",
+                            font=ctk.CTkFont(size=14, weight="bold"), text_color="#EF4444").grid(
+                                row=row_idx, column=0, padx=20, pady=(10, 5), sticky="w")
+                row_idx += 1
+                
+                for bp in report['common_passwords'][:5]:
+                    ctk.CTkLabel(issues_frame, text=f"    • {bp['app_name']} - Matches common password list",
+                                text_color="gray").grid(row=row_idx, column=0, padx=20, sticky="w")
+                    row_idx += 1
+            
+            ctk.CTkLabel(issues_frame, text="").grid(row=row_idx, column=0, pady=(5, 10))
+        
+        btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        btn_frame.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        
+        ctk.CTkButton(btn_frame, text="📄 Export Encrypted Report", 
+                      command=lambda: self.handle_export_security_report(popup),
+                      height=40, fg_color="#3B82F6", hover_color="#2563EB").pack(side="left", padx=(0, 10))
+        
+        ctk.CTkButton(btn_frame, text="Close", command=popup.destroy,
+                      height=40, fg_color="#666666", hover_color="#555555").pack(side="left")
+
+    def handle_export_security_report(self, popup=None):
+        """Export the current security scan report as an encrypted file."""
+        from tkinter import filedialog
+        
+        if not hasattr(self, '_current_report') or not self._current_report:
+            self.show_toast("No scan report available. Run a scan first.", error=True)
+            return
+        
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".svreport",
+            filetypes=[("SafeVault Security Report", "*.svreport")],
+            initialfile=f"SecurityScan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.svreport"
+        )
+        
+        if file_path:
+            try:
+                self.backend.export_encrypted_report(self._current_report, file_path)
+                self.show_toast("Encrypted report exported successfully!")
+                if popup:
+                    popup.destroy()
+            except Exception as e:
+                self.show_toast(f"Export failed: {e}", error=True)
+
     def handle_search(self, *args):
         """Handle global search input change."""
         query = self.search_var.get().strip()
