@@ -16,7 +16,7 @@ ENV/
 # Distribution / Build
 dist/
 build/
-*.spec
+
 
 # IDEs
 .vscode/
