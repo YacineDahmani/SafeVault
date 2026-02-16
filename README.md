@@ -2,6 +2,9 @@
 
 **SafeVault** is a secure, local, and user-friendly password manager built with Python. It features a modern tabbed interface to manage your passwords, credit cards, and secret notes securely.
 
+[![Download](https://img.shields.io/github/v/release/YacineDahmani/SafeVault?label=Download&style=for-the-badge&logo=github)](https://github.com/YacineDahmani/SafeVault/releases/latest)
+
+
 ## 🌟 Features
 
 *   **Strong Encryption:** Uses **Fernet (AES-128)** symmetric encryption for all sensitive data.
