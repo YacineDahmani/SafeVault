@@ -778,11 +778,13 @@ class App(ctk.CTk):
         self.title("🔐 SafeVault - Password Manager")
         self.geometry("900x700")
         self.minsize(800, 600)
+        self.resizable(True, True)
         
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         
         self.toggle_font = ctk.CTkFont(size=14)
+        self.icon_font = ctk.CTkFont(size=16)
         
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -835,7 +837,7 @@ class App(ctk.CTk):
         self.setup_password.grid(row=0, column=0, sticky="ew")
         
         self.setup_eye = ctk.CTkButton(pw_frame, text="👁️", width=45, height=45, fg_color="#333333", hover_color="#444444",
-                                      font=self.toggle_font, anchor="center",
+                                      font=self.icon_font, anchor="center",
                                       command=lambda: self.toggle_password_visibility(self.setup_password, self.setup_eye))
         self.setup_eye.grid(row=0, column=1, padx=(5, 0))
         
@@ -850,7 +852,7 @@ class App(ctk.CTk):
         self.setup_confirm.grid(row=0, column=0, sticky="ew")
         
         self.setup_confirm_eye = ctk.CTkButton(cpw_frame, text="👁️", width=45, height=45, fg_color="#333333", hover_color="#444444",
-                                              font=self.toggle_font, anchor="center",
+                                              font=self.icon_font, anchor="center",
                                               command=lambda: self.toggle_password_visibility(self.setup_confirm, self.setup_confirm_eye))
         self.setup_confirm_eye.grid(row=0, column=1, padx=(5, 0))
         
@@ -913,7 +915,7 @@ class App(ctk.CTk):
         self.login_password.bind("<Return>", lambda e: self.handle_login())
         
         self.login_eye = ctk.CTkButton(login_pw_frame, text="👁️", width=50, height=50, fg_color="#333333", hover_color="#444444",
-                                      font=self.toggle_font, anchor="center",
+                                      font=self.icon_font, anchor="center",
                                       command=lambda: self.toggle_password_visibility(self.login_password, self.login_eye))
         self.login_eye.grid(row=0, column=1, padx=(5, 0))
         
@@ -1011,7 +1013,7 @@ class App(ctk.CTk):
         self.pw_pass.grid(row=0, column=0, sticky="ew")
         
         self.pwt_eye = ctk.CTkButton(pw_frame, text="👁️", width=40, height=40, fg_color="#333333", hover_color="#444444",
-                                    font=self.toggle_font, anchor="center",
+                                    font=self.icon_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.pw_pass, self.pwt_eye))
         self.pwt_eye.grid(row=0, column=1, padx=(5, 5))
         
@@ -1019,7 +1021,7 @@ class App(ctk.CTk):
                       fg_color="#7C3AED", hover_color="#6D28D9").grid(row=0, column=2)
         
         self.pw_tags = ctk.CTkEntry(form, placeholder_text="Tags (comma separated)", height=40)
-        self.pw_tags.grid(row=2, column=0, columnspan=2, padx=(15, 5), pady=(0, 15), sticky="ew")
+        self.pw_tags.grid(row=2, column=0, columnspan=3, padx=(15, 5), pady=(0, 15), sticky="ew")
 
         ctk.CTkButton(form, text="Add", command=self.add_password_entry, width=80, height=40,
                       fg_color="#10B981", hover_color="#059669").grid(row=2, column=3, padx=(5, 15), pady=(0, 15))
@@ -1046,13 +1048,15 @@ class App(ctk.CTk):
         if entries is None:
             entries = self.backend.get_all_passwords()
         
+        entries = entries[:20]
+        
         if not entries:
             ctk.CTkLabel(self.pw_scroll, text="No matching passwords found.", text_color="gray").grid(row=0, column=0, pady=30)
             return
         
         for idx, entry in enumerate(entries):
             row = ctk.CTkFrame(self.pw_scroll)
-            row.grid(row=idx, column=0, sticky="ew", pady=3)
+            row.pack(fill="x", pady=3)
             row.grid_columnconfigure(1, weight=1)
             
             info_frame = ctk.CTkFrame(row, fg_color="transparent")
@@ -1072,9 +1076,9 @@ class App(ctk.CTk):
                     ).pack(side="left", padx=2)
             
             ctk.CTkButton(row, text="📋", command=lambda eid=entry['id']: self.copy_password(eid),
-                          width=40, height=32, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
+                          width=40, height=40, fg_color="#3B82F6", font=self.icon_font).grid(row=0, column=2, padx=5, pady=10)
             ctk.CTkButton(row, text="🗑️", command=lambda eid=entry['id']: self.delete_password(eid),
-                          width=40, height=32, fg_color="#EF4444").grid(row=0, column=3, padx=(5, 15), pady=10)
+                          width=40, height=40, fg_color="#EF4444", font=self.icon_font).grid(row=0, column=3, padx=(5, 15), pady=10)
     
     def add_password_entry(self):
         """Add a new password."""
@@ -1184,19 +1188,19 @@ class App(ctk.CTk):
         ctk.CTkLabel(form, text="➕ Add Card", font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0, column=0, columnspan=7, sticky="w", padx=15, pady=(15, 10))
         
-        self.card_label = ctk.CTkEntry(form, placeholder_text="Label", height=40)
+        self.card_label = ctk.CTkEntry(form, placeholder_text="Label", placeholder_text_color="gray", height=40)
         self.card_label.grid(row=1, column=0, padx=(15, 5), pady=(0, 15), sticky="ew")
         
-        self.card_holder = ctk.CTkEntry(form, placeholder_text="Holder", height=40)
+        self.card_holder = ctk.CTkEntry(form, placeholder_text="Holder", placeholder_text_color="gray", height=40)
         self.card_holder.grid(row=1, column=1, padx=5, pady=(0, 15), sticky="ew")
         
         card_num_validate = self.register(self.validate_card_number)
-        self.card_number = ctk.CTkEntry(form, placeholder_text="CardNumber", height=40,
+        self.card_number = ctk.CTkEntry(form, placeholder_text="CardNumber", placeholder_text_color="gray", height=40,
                                         validate="key", validatecommand=(card_num_validate, '%P'))
         self.card_number.grid(row=1, column=2, padx=5, pady=(0, 15), sticky="ew")
         
         expiry_validate = self.register(self.validate_expiry)
-        self.card_expiry = ctk.CTkEntry(form, placeholder_text="MM/YY", height=40, width=80,
+        self.card_expiry = ctk.CTkEntry(form, placeholder_text="MM/YY", placeholder_text_color="gray", height=40, width=80,
                                         validate="key", validatecommand=(expiry_validate, '%P'))
         self.card_expiry.grid(row=1, column=3, padx=5, pady=(0, 15), sticky="ew")
         
@@ -1206,12 +1210,12 @@ class App(ctk.CTk):
         cvv_frame.grid_columnconfigure(1, weight=0, minsize=40) # Lock toggle column
         
         cvv_validate = self.register(self.validate_cvv)
-        self.card_cvv = ctk.CTkEntry(cvv_frame, placeholder_text="CVV", height=40, show="•",
+        self.card_cvv = ctk.CTkEntry(cvv_frame, placeholder_text="CVV", placeholder_text_color="gray", height=40, show="•",
                                      validate="key", validatecommand=(cvv_validate, '%P'))
         self.card_cvv.grid(row=0, column=0, sticky="ew")
         
         self.cvv_eye = ctk.CTkButton(cvv_frame, text="👁️", width=40, height=40, fg_color="#333333", hover_color="#444444",
-                                    font=self.toggle_font, anchor="center",
+                                    font=self.icon_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.card_cvv, self.cvv_eye))
         self.cvv_eye.grid(row=0, column=1, padx=(5, 0))
         
@@ -1221,20 +1225,20 @@ class App(ctk.CTk):
         pin_frame.grid_columnconfigure(1, weight=0, minsize=40) # Lock toggle column
         
         pin_validate = self.register(self.validate_pin)
-        self.card_pin = ctk.CTkEntry(pin_frame, placeholder_text="PIN", height=40, show="•",
+        self.card_pin = ctk.CTkEntry(pin_frame, placeholder_text="PIN", placeholder_text_color="gray", height=40, show="•",
                                      validate="key", validatecommand=(pin_validate, '%P'))
         self.card_pin.grid(row=0, column=0, sticky="ew")
         
         self.pin_eye = ctk.CTkButton(pin_frame, text="👁️", width=40, height=40, fg_color="#333333", hover_color="#444444",
-                                    font=self.toggle_font, anchor="center",
+                                    font=self.icon_font, anchor="center",
                                     command=lambda: self.toggle_password_visibility(self.card_pin, self.pin_eye))
         self.pin_eye.grid(row=0, column=1, padx=(5, 0))
         
-        self.card_tags = ctk.CTkEntry(form, placeholder_text="Tags (comma separated)", height=40)
-        self.card_tags.grid(row=2, column=0, columnspan=3, padx=(15, 5), pady=(0, 15), sticky="ew")
+        self.card_tags = ctk.CTkEntry(form, placeholder_text="Tags (comma separated)", placeholder_text_color="gray", height=40)
+        self.card_tags.grid(row=2, column=0, columnspan=5, padx=(15, 5), pady=(0, 15), sticky="ew")
 
         ctk.CTkButton(form, text="Add", command=self.add_card_entry, width=80, height=40,
-                      fg_color="#10B981", hover_color="#059669").grid(row=2, column=6, padx=(5, 15), pady=(0, 15))
+                      fg_color="#10B981", hover_color="#059669").grid(row=2, column=5, padx=(5, 15), pady=(0, 15))
         
         list_frame = ctk.CTkFrame(tab)
         list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -1257,6 +1261,9 @@ class App(ctk.CTk):
         
         if cards is None:
             cards = self.backend.get_all_cards()
+
+        # Limit to 20 items for performance
+        cards = cards[:20]
         
         if not cards:
             ctk.CTkLabel(self.card_scroll, text="No matching cards found.", text_color="gray").grid(row=0, column=0, pady=30)
@@ -1264,7 +1271,7 @@ class App(ctk.CTk):
         
         for idx, card in enumerate(cards):
             row = ctk.CTkFrame(self.card_scroll)
-            row.grid(row=idx, column=0, sticky="ew", pady=3)
+            row.pack(fill="x", pady=3)
             row.grid_columnconfigure(1, weight=1)
             
             # Info section
@@ -1295,9 +1302,9 @@ class App(ctk.CTk):
                     ).pack(side="left", padx=2)
             
             ctk.CTkButton(row, text="👁️ View", command=lambda cid=card['id']: self.view_card(cid),
-                          width=70, height=32, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
+                          width=70, height=40, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
             ctk.CTkButton(row, text="🗑️", command=lambda cid=card['id']: self.delete_card(cid),
-                          width=40, height=32, fg_color="#EF4444").grid(row=0, column=3, padx=(5, 15), pady=10)
+                          width=40, height=40, fg_color="#EF4444", font=self.icon_font).grid(row=0, column=3, padx=(5, 15), pady=10)
     
     def add_card_entry(self):
         """Add a new card with strict validation."""
@@ -1458,6 +1465,9 @@ class App(ctk.CTk):
         
         if notes is None:
             notes = self.backend.get_all_notes()
+
+        # Limit to 20 items for performance            
+        notes = notes[:20]
         
         if not notes:
             ctk.CTkLabel(self.note_scroll, text="No matching notes found.", text_color="gray").grid(row=0, column=0, pady=30)
@@ -1465,7 +1475,7 @@ class App(ctk.CTk):
         
         for idx, note in enumerate(notes):
             row = ctk.CTkFrame(self.note_scroll)
-            row.grid(row=idx, column=0, sticky="ew", pady=3)
+            row.pack(fill="x", pady=3)
             row.grid_columnconfigure(1, weight=1)
             
             info_frame = ctk.CTkFrame(row, fg_color="transparent")
@@ -1484,9 +1494,9 @@ class App(ctk.CTk):
                     ).pack(side="left", padx=2)
             
             ctk.CTkButton(row, text="👁️ View", command=lambda nid=note['id']: self.view_note(nid),
-                          width=70, height=32, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
+                          width=70, height=40, fg_color="#3B82F6").grid(row=0, column=2, padx=5, pady=10)
             ctk.CTkButton(row, text="🗑️", command=lambda nid=note['id']: self.delete_note(nid),
-                          width=40, height=32, fg_color="#EF4444").grid(row=0, column=3, padx=(5, 15), pady=10)
+                          width=40, height=40, fg_color="#EF4444", font=self.icon_font).grid(row=0, column=3, padx=(5, 15), pady=10)
     
     def add_note_entry(self):
         """Add a new note."""
