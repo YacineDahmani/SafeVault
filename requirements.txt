@@ -1,7 +1,7 @@
 # SafeVolt Password Manager 
 
-# Tkinter UI
-customtkinter>=5.2.0
+# PySide6 UI
+PySide6>=6.5.0
 
 # Cryptography library for Fernet encryption and PBKDF2
 cryptography>=41.0.0
