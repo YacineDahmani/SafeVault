@@ -18,21 +18,31 @@ import pyperclip
 from backend import Backend
 
 
-# ─── Unicode icon constants ──────────────────────────────────────────
-ICO_COPY   = "\U0001F4CB"   # clipboard
-ICO_VIEW   = "\U0001F441"   # eye
-ICO_DEL    = "\U0001F5D1"   # wastebasket
-ICO_HIDE   = "\U0001F512"   # lock (hidden)
-ICO_SHOW   = "\U0001F513"   # open lock (visible)
-ICO_READ   = "\U0001F4D6"   # open book
-ICO_ADD    = "\u2795"        # heavy plus
-ICO_REFRESH = "\U0001F504"  # arrows cycle
+ICO_COPY   = "\uE16F"   # copy
+ICO_VIEW   = "\uE890"   # view/eye
+ICO_DEL    = "\uE711"   # cancel/close ×
+ICO_HIDE   = "\uE72E"   # lock
+ICO_SHOW   = "\uE785"   # unlock
+ICO_READ   = "\uE736"   # dictionary/book
+ICO_ADD    = "\uE710"   # add/+
+ICO_REFRESH = "\uE72C"  # refresh
+ICO_CARD   = "\uE8C7"   # credit card
+ICO_ROCKET = "\uEB4F"   # rocket
+ICO_DICE   = "\uE14B"   # shuffle/generator
+ICO_KEY    = "\uE8D7"   # key
+ICO_NOTES  = "\uE70B"   # edit/notes
+ICO_SETTINGS = "\uE713" # settings
+ICO_SEARCH = "\uE71E"   # search
+ICO_SAVE   = "\uE74E"   # save
+ICO_UPLOAD = "\uE78C"   # upload
+ICO_WARN   = "\uE7BA"   # warning
+ICO_CHECK  = "\uE73E"   # checkmark
 
 
 class ModernStyle:
     STYLE = """
     * {
-        font-family: "Segoe UI", "San Francisco", "Helvetica Neue", Arial, sans-serif;
+        font-family: "Segoe UI", "Segoe Fluent Icons", "Segoe MDL2 Assets", "San Francisco", "Helvetica Neue", Arial, sans-serif;
     }
     QMainWindow, QWidget {
         background-color: #121212;
@@ -252,7 +262,7 @@ class LoginWidget(QWidget):
         vb.setContentsMargins(40, 40, 40, 40)
         vb.setSpacing(20)
 
-        title = QLabel("\U0001F510 Welcome Back")
+        title = QLabel(f"{ICO_HIDE} Welcome Back")
         title.setStyleSheet("font-size: 26px; font-weight: bold; color: white;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -263,12 +273,26 @@ class LoginWidget(QWidget):
         self.pwd = QLineEdit()
         self.pwd.setPlaceholderText("Master Password")
         self.pwd.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pwd.setMinimumWidth(320)
         self.pwd.setMinimumHeight(45)
         self.pwd.returnPressed.connect(self._login)
+        
+        self.vis = QPushButton(ICO_VIEW)
+        self.vis.setObjectName("iconBtn")
+        self.vis.setToolTip("Show password")
+        self.vis.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.vis.clicked.connect(lambda: (
+            self.pwd.setEchoMode(QLineEdit.EchoMode.Normal if self.pwd.echoMode() == QLineEdit.EchoMode.Password else QLineEdit.EchoMode.Password),
+            self.vis.setText(ICO_HIDE if self.pwd.echoMode() == QLineEdit.EchoMode.Normal else ICO_VIEW)
+        ))
+        
+        pw_lay = QHBoxLayout()
+        pw_lay.setContentsMargins(0, 0, 0, 0)
+        pw_lay.addWidget(self.pwd)
+        pw_lay.addWidget(self.vis)
 
-        btn = QPushButton("Unlock Vault")
-        btn.setMinimumHeight(45)
+        btn = QPushButton(f"{ICO_SHOW}  Unlock Vault")
+        btn.setMinimumHeight(36)
+        btn.setMaximumHeight(34)
         btn.clicked.connect(self._login)
 
         self.err = QLabel("")
@@ -278,7 +302,8 @@ class LoginWidget(QWidget):
         for w in (title, sub):
             vb.addWidget(w)
         vb.addSpacing(10)
-        for w in (self.pwd, btn, self.err):
+        vb.addLayout(pw_lay)
+        for w in (btn, self.err):
             vb.addWidget(w)
         layout.addWidget(box)
 
@@ -317,7 +342,7 @@ class SetupWidget(QWidget):
         vb.setContentsMargins(40, 40, 40, 40)
         vb.setSpacing(15)
 
-        title = QLabel("\U0001F680 First Time Setup")
+        title = QLabel(f"{ICO_ROCKET} First Time Setup")
         title.setStyleSheet("font-size: 26px; font-weight: bold; color: white;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -328,13 +353,27 @@ class SetupWidget(QWidget):
         self.pwd = QLineEdit()
         self.pwd.setPlaceholderText("Create Master Password")
         self.pwd.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pwd.setMinimumWidth(320)
         self.pwd.setMinimumHeight(45)
 
         self.conf = QLineEdit()
         self.conf.setPlaceholderText("Confirm Master Password")
         self.conf.setEchoMode(QLineEdit.EchoMode.Password)
         self.conf.setMinimumHeight(45)
+        
+        self.vis = QPushButton(ICO_VIEW)
+        self.vis.setObjectName("iconBtn")
+        self.vis.setToolTip("Show password")
+        self.vis.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.vis.clicked.connect(lambda: (
+            self.pwd.setEchoMode(QLineEdit.EchoMode.Normal if self.pwd.echoMode() == QLineEdit.EchoMode.Password else QLineEdit.EchoMode.Password),
+            self.conf.setEchoMode(QLineEdit.EchoMode.Normal if self.conf.echoMode() == QLineEdit.EchoMode.Password else QLineEdit.EchoMode.Password),
+            self.vis.setText(ICO_HIDE if self.pwd.echoMode() == QLineEdit.EchoMode.Normal else ICO_VIEW)
+        ))
+        
+        pw_lay = QHBoxLayout()
+        pw_lay.setContentsMargins(0, 0, 0, 0)
+        pw_lay.addWidget(self.pwd)
+        pw_lay.addWidget(self.vis)
 
         btn = QPushButton("Create Vault")
         btn.setMinimumHeight(45)
@@ -347,7 +386,8 @@ class SetupWidget(QWidget):
         for w in (title, warn):
             vb.addWidget(w)
         vb.addSpacing(10)
-        for w in (self.pwd, self.conf, btn, self.err):
+        vb.addLayout(pw_lay)
+        for w in (self.conf, btn, self.err):
             vb.addWidget(w)
         layout.addWidget(box)
 
@@ -422,8 +462,12 @@ class PasswordsTab(QWidget):
                        else self.backend.get_all_passwords())
             self.table.setRowCount(len(entries))
             for i, p in enumerate(entries):
-                self.table.setItem(i, 0, QTableWidgetItem(p['app_name']))
-                self.table.setItem(i, 1, QTableWidgetItem(p['username']))
+                item0 = QTableWidgetItem(p['app_name'])
+                item0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(i, 0, item0)
+                item1 = QTableWidgetItem(p['username'])
+                item1.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(i, 1, item1)
                 self.table.setItem(i, 3, QTableWidgetItem(str(p['id'])))
 
                 w = QWidget()
@@ -514,7 +558,7 @@ class PasswordsTab(QWidget):
         pwd_in = QLineEdit()
         pwd_in.setEchoMode(QLineEdit.EchoMode.Password)
 
-        gen = QPushButton("\U0001F3B2")
+        gen = QPushButton(ICO_DICE)
         gen.setObjectName("secondaryBtn")
         gen.setToolTip("Generate random password")
         gen.clicked.connect(lambda: pwd_in.setText(self.backend.generate_password(16)))
@@ -610,8 +654,12 @@ class CardsTab(QWidget):
                      else self.backend.get_all_cards())
             self.table.setRowCount(len(cards))
             for i, c in enumerate(cards):
-                self.table.setItem(i, 0, QTableWidgetItem(c['label']))
-                self.table.setItem(i, 1, QTableWidgetItem(c['holder_name']))
+                item0 = QTableWidgetItem(c['label'])
+                item0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(i, 0, item0)
+                item1 = QTableWidgetItem(c['holder_name'])
+                item1.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(i, 1, item1)
 
                 w = QWidget()
                 hl = QHBoxLayout(w)
@@ -651,7 +699,7 @@ class CardsTab(QWidget):
         lay = QVBoxLayout(d)
         lay.setSpacing(12)
 
-        header = QLabel(f"\U0001F4B3  {c['label']}")
+        header = QLabel(f"{ICO_CARD}  {c['label']}")
         header.setStyleSheet("font-size: 20px; font-weight: bold; color: #0078D4;")
         lay.addWidget(header)
 
@@ -832,7 +880,9 @@ class NotesTab(QWidget):
                      else self.backend.get_all_notes())
             self.table.setRowCount(len(notes))
             for i, n in enumerate(notes):
-                self.table.setItem(i, 0, QTableWidgetItem(n['title']))
+                item0 = QTableWidgetItem(n['title'])
+                item0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(i, 0, item0)
 
                 w = QWidget()
                 hl = QHBoxLayout(w)
@@ -943,7 +993,7 @@ class SettingsTab(QWidget):
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(20)
 
-        title = QLabel("\u2699\uFE0F  Settings & Tools")
+        title = QLabel(f"{ICO_SETTINGS}  Settings & Tools")
         title.setStyleSheet("font-size: 22px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
@@ -951,7 +1001,7 @@ class SettingsTab(QWidget):
         health_grp = QGroupBox("Password Health Check")
         hlay = QVBoxLayout(health_grp)
 
-        scan_btn = QPushButton("\U0001F50D  Run Security Scan")
+        scan_btn = QPushButton(f"{ICO_SEARCH}  Run Security Scan")
         scan_btn.setMinimumHeight(40)
         scan_btn.clicked.connect(self._run_scan)
         hlay.addWidget(scan_btn)
@@ -967,11 +1017,11 @@ class SettingsTab(QWidget):
         blay = QVBoxLayout(backup_grp)
 
         brow = QHBoxLayout()
-        backup_btn = QPushButton("\U0001F4BE  Backup Vault")
+        backup_btn = QPushButton(f"{ICO_SAVE}  Backup Vault")
         backup_btn.setMinimumHeight(40)
         backup_btn.clicked.connect(self._backup)
 
-        restore_btn = QPushButton("\U0001F504  Restore Vault")
+        restore_btn = QPushButton(f"{ICO_REFRESH}  Restore Vault")
         restore_btn.setObjectName("secondaryBtn")
         restore_btn.setMinimumHeight(40)
         restore_btn.clicked.connect(self._restore)
@@ -986,11 +1036,11 @@ class SettingsTab(QWidget):
         ielay = QVBoxLayout(ie_grp)
 
         ierow = QHBoxLayout()
-        export_btn = QPushButton("\U0001F4E4  Export as JSON")
+        export_btn = QPushButton(f"{ICO_UPLOAD}  Export as JSON")
         export_btn.setMinimumHeight(40)
         export_btn.clicked.connect(self._export_json)
 
-        export_enc_btn = QPushButton("\U0001F510  Export Encrypted Report")
+        export_enc_btn = QPushButton(f"{ICO_HIDE}  Export Encrypted Report")
         export_enc_btn.setObjectName("secondaryBtn")
         export_enc_btn.setMinimumHeight(40)
         export_enc_btn.clicked.connect(self._export_encrypted)
@@ -1019,12 +1069,68 @@ class SettingsTab(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(scroll)
 
+    def _make_stat_card(self, value, label, color):
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: #1a1a2e;
+                border: 1px solid {color}40;
+                border-radius: 10px;
+                padding: 8px;
+            }}
+        """)
+        vb = QVBoxLayout(card)
+        vb.setContentsMargins(12, 10, 12, 10)
+        vb.setSpacing(2)
+        val = QLabel(str(value))
+        val.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {color}; background: transparent;")
+        val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl = QLabel(label)
+        lbl.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vb.addWidget(val)
+        vb.addWidget(lbl)
+        return card
+
+    def _make_issue_card(self, icon, title, subtitle, accent_color):
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: #1a1a2e;
+                border-left: 3px solid {accent_color};
+                border-radius: 6px;
+                padding: 6px;
+            }}
+        """)
+        hl = QHBoxLayout(card)
+        hl.setContentsMargins(12, 8, 12, 8)
+        hl.setSpacing(10)
+        ico = QLabel(icon)
+        ico.setStyleSheet(f"font-size: 18px; color: {accent_color}; background: transparent;")
+        ico.setFixedWidth(24)
+        text_lay = QVBoxLayout()
+        text_lay.setSpacing(2)
+        t = QLabel(title)
+        t.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {accent_color}; background: transparent;")
+        s = QLabel(subtitle)
+        s.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
+        s.setWordWrap(True)
+        text_lay.addWidget(t)
+        text_lay.addWidget(s)
+        hl.addWidget(ico)
+        hl.addLayout(text_lay, 1)
+        return card
+
     def _run_scan(self):
-        # Clear old results
         while self.scan_result_lay.count():
             child = self.scan_result_lay.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+            elif child.layout():
+                while child.layout().count():
+                    sub = child.layout().takeAt(0)
+                    if sub.widget():
+                        sub.widget().deleteLater()
 
         try:
             report = self.backend.run_security_scan()
@@ -1034,57 +1140,131 @@ class SettingsTab(QWidget):
 
         total = report['total_passwords']
         score = report['overall_score']
+        dist = report['strength_distribution']
 
-        # Overall score bar
+        # ── Score header with circular-style display ──
+        if score >= 80:
+            score_color = "#27ae60"
+            score_label = "Excellent"
+        elif score >= 60:
+            score_color = "#f39c12"
+            score_label = "Fair"
+        else:
+            score_color = "#e74c3c"
+            score_label = "Needs Work"
+
+        score_frame = QFrame()
+        score_frame.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #1a1a2e, stop:1 #16213e);
+                border: 1px solid {score_color}30;
+                border-radius: 12px;
+            }}
+        """)
+        sf_lay = QHBoxLayout(score_frame)
+        sf_lay.setContentsMargins(20, 16, 20, 16)
+        sf_lay.setSpacing(16)
+
+        score_num = QLabel(f"{int(score)}")
+        score_num.setStyleSheet(f"font-size: 48px; font-weight: bold; color: {score_color}; background: transparent;")
+        score_num.setFixedWidth(80)
+        score_num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        score_details = QVBoxLayout()
+        score_details.setSpacing(4)
+        score_title = QLabel(f"Security Score  \u2022  {score_label}")
+        score_title.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {score_color}; background: transparent;")
+        score_sub = QLabel(f"{total} password{'s' if total != 1 else ''} analyzed")
+        score_sub.setStyleSheet("font-size: 12px; color: #888; background: transparent;")
+
         bar = QProgressBar()
         bar.setRange(0, 100)
         bar.setValue(int(score))
-        if score >= 80:
-            bar.setStyleSheet("QProgressBar::chunk { background-color: #27ae60; border-radius: 5px; }")
-        elif score >= 60:
-            bar.setStyleSheet("QProgressBar::chunk { background-color: #f39c12; border-radius: 5px; }")
-        else:
-            bar.setStyleSheet("QProgressBar::chunk { background-color: #e74c3c; border-radius: 5px; }")
-        bar.setFormat(f"Overall Score: {score}/100")
-        self.scan_result_lay.addWidget(bar)
+        bar.setFixedHeight(8)
+        bar.setTextVisible(False)
+        bar.setStyleSheet(f"""
+            QProgressBar {{ background-color: #252530; border: none; border-radius: 4px; }}
+            QProgressBar::chunk {{ background-color: {score_color}; border-radius: 4px; }}
+        """)
 
-        info = QLabel(
-            f"Total passwords: {total}  \u2022  "
-            f"Strong: {report['strength_distribution']['strong']}  \u2022  "
-            f"Good: {report['strength_distribution']['good']}  \u2022  "
-            f"Fair: {report['strength_distribution']['fair']}  \u2022  "
-            f"Weak: {report['strength_distribution']['weak']}"
-        )
-        info.setStyleSheet("color: #cccccc; font-size: 13px; padding: 4px;")
-        info.setWordWrap(True)
-        self.scan_result_lay.addWidget(info)
+        score_details.addWidget(score_title)
+        score_details.addWidget(bar)
+        score_details.addWidget(score_sub)
+        sf_lay.addWidget(score_num)
+        sf_lay.addLayout(score_details, 1)
+        self.scan_result_lay.addWidget(score_frame)
+
+        # ── Strength distribution stat cards ──
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(8)
+        stats_row.addWidget(self._make_stat_card(dist.get('strong', 0), "Strong", "#27ae60"))
+        stats_row.addWidget(self._make_stat_card(dist.get('good', 0), "Good", "#2ecc71"))
+        stats_row.addWidget(self._make_stat_card(dist.get('fair', 0), "Fair", "#f39c12"))
+        stats_row.addWidget(self._make_stat_card(dist.get('weak', 0), "Weak", "#e74c3c"))
+        self.scan_result_lay.addLayout(stats_row)
+
+        # ── Issues section ──
+        has_issues = report['weak_passwords'] or report['duplicate_groups'] or report['common_passwords']
+
+        if has_issues:
+            issues_title = QLabel(f"{ICO_WARN}  Issues Found")
+            issues_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #ff8855; padding-top: 8px;")
+            self.scan_result_lay.addWidget(issues_title)
 
         if report['weak_passwords']:
-            weak_lbl = QLabel(f"\u26A0  {len(report['weak_passwords'])} weak or fair password(s) found")
-            weak_lbl.setStyleSheet("color: #ff5555; font-weight: bold; padding: 4px;")
-            self.scan_result_lay.addWidget(weak_lbl)
-
-            for wp in report['weak_passwords'][:10]:
-                issues = ", ".join(wp['issues']) if wp['issues'] else "No specifics"
-                wl = QLabel(f"  \u2022 {wp['app_name']} \u2014 {wp['rating']} ({wp['score']}/100): {issues}")
-                wl.setStyleSheet("color: #ffaa00; font-size: 12px; padding-left: 12px;")
-                wl.setWordWrap(True)
-                self.scan_result_lay.addWidget(wl)
+            count = len(report['weak_passwords'])
+            self.scan_result_lay.addWidget(self._make_issue_card(
+                ICO_WARN, f"{count} Weak Password{'s' if count > 1 else ''}",
+                "These passwords may be easy to guess or crack.", "#e74c3c"
+            ))
+            for wp in report['weak_passwords'][:8]:
+                issues = ", ".join(wp['issues']) if wp['issues'] else "Low complexity"
+                self.scan_result_lay.addWidget(self._make_issue_card(
+                    "\u2022", f"{wp['app_name']}  \u2014  {wp['rating']} ({wp['score']}/100)",
+                    issues, "#ff8855"
+                ))
 
         if report['duplicate_groups']:
-            dup_lbl = QLabel(f"\u26A0  {len(report['duplicate_groups'])} group(s) of reused passwords")
-            dup_lbl.setStyleSheet("color: #ff5555; font-weight: bold; padding: 4px;")
-            self.scan_result_lay.addWidget(dup_lbl)
+            count = len(report['duplicate_groups'])
+            self.scan_result_lay.addWidget(self._make_issue_card(
+                ICO_WARN, f"{count} Reused Password Group{'s' if count > 1 else ''}",
+                "Using the same password across accounts is risky.", "#f39c12"
+            ))
 
         if report['common_passwords']:
-            com_lbl = QLabel(f"\u26A0  {len(report['common_passwords'])} commonly breached password(s)")
-            com_lbl.setStyleSheet("color: #ff5555; font-weight: bold; padding: 4px;")
-            self.scan_result_lay.addWidget(com_lbl)
+            count = len(report['common_passwords'])
+            self.scan_result_lay.addWidget(self._make_issue_card(
+                ICO_WARN, f"{count} Commonly Breached Password{'s' if count > 1 else ''}",
+                "These passwords appear in known breach databases.", "#e74c3c"
+            ))
 
-        if not report['weak_passwords'] and not report['duplicate_groups'] and not report['common_passwords']:
-            ok = QLabel("\u2705  All passwords look healthy!")
-            ok.setStyleSheet("color: #27ae60; font-weight: bold; font-size: 14px; padding: 4px;")
-            self.scan_result_lay.addWidget(ok)
+        if not has_issues:
+            ok_frame = QFrame()
+            ok_frame.setStyleSheet("""
+                QFrame {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #1a2e1a, stop:1 #1a1a2e);
+                    border: 1px solid #27ae6040;
+                    border-radius: 10px;
+                    padding: 16px;
+                }
+            """)
+            ok_lay = QHBoxLayout(ok_frame)
+            ok_lay.setContentsMargins(16, 12, 16, 12)
+            ok_ico = QLabel(ICO_CHECK)
+            ok_ico.setStyleSheet("font-size: 24px; color: #27ae60; background: transparent;")
+            ok_ico.setFixedWidth(32)
+            ok_txt = QVBoxLayout()
+            ok_t = QLabel("All Clear!")
+            ok_t.setStyleSheet("font-size: 16px; font-weight: bold; color: #27ae60; background: transparent;")
+            ok_s = QLabel("All your passwords meet security standards.")
+            ok_s.setStyleSheet("font-size: 12px; color: #6fcf97; background: transparent;")
+            ok_txt.addWidget(ok_t)
+            ok_txt.addWidget(ok_s)
+            ok_lay.addWidget(ok_ico)
+            ok_lay.addLayout(ok_txt, 1)
+            self.scan_result_lay.addWidget(ok_frame)
 
     def _backup(self):
         path, _ = QFileDialog.getSaveFileName(self, "Backup Vault", "vault_backup.db", "Database (*.db)")
@@ -1113,6 +1293,17 @@ class SettingsTab(QWidget):
                 QMessageBox.critical(self, "Error", str(e))
 
     def _export_json(self):
+        ret = QMessageBox.warning(
+            self, "Export Warning",
+            f"{ICO_WARN}  Exporting as JSON will save all your passwords, cards, "
+            "and notes in plain text (unencrypted).\n\n"
+            "Anyone with access to this file can read your data.\n"
+            "Only use this for migration purposes and delete the file after.\n\n"
+            "Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if ret != QMessageBox.StandardButton.Yes:
+            return
         path, _ = QFileDialog.getSaveFileName(self, "Export Vault", "vault_export.json", "JSON (*.json)")
         if path:
             try:
@@ -1146,7 +1337,7 @@ class MainWindow(QMainWindow):
     def __init__(self, backend):
         super().__init__()
         self.backend = backend
-        self.setWindowTitle("\U0001F510 SafeVault")
+        self.setWindowTitle(f"{ICO_HIDE} SafeVault")
         self.setMinimumSize(1000, 700)
         self.setStyleSheet(ModernStyle.STYLE)
 
@@ -1175,11 +1366,11 @@ class MainWindow(QMainWindow):
         lay.setSpacing(15)
 
         hdr = QHBoxLayout()
-        logo = QLabel("\U0001F510 SafeVault")
+        logo = QLabel(f"{ICO_HIDE} SafeVault")
         logo.setStyleSheet("font-size: 28px; font-weight: bold; color: #0078D4;")
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("\U0001F50D Search vault...")
+        self.search.setPlaceholderText(f"{ICO_SEARCH} Search vault...")
         self.search.setMinimumWidth(300)
         self.search.setMinimumHeight(35)
         self.search.textChanged.connect(self._on_search)
@@ -1201,10 +1392,10 @@ class MainWindow(QMainWindow):
         self.nt_tab = NotesTab(self.backend)
         self.st_tab = SettingsTab(self.backend, self)
 
-        self.tabs.addTab(self.pw_tab, "\U0001F511 Passwords")
-        self.tabs.addTab(self.cd_tab, "\U0001F4B3 Cards")
-        self.tabs.addTab(self.nt_tab, "\U0001F4DD Notes")
-        self.tabs.addTab(self.st_tab, "\u2699\uFE0F Settings")
+        self.tabs.addTab(self.pw_tab, f"{ICO_KEY} Passwords")
+        self.tabs.addTab(self.cd_tab, f"{ICO_CARD} Cards")
+        self.tabs.addTab(self.nt_tab, f"{ICO_NOTES} Notes")
+        self.tabs.addTab(self.st_tab, f"{ICO_SETTINGS} Settings")
 
         lay.addLayout(hdr)
         lay.addWidget(self.tabs)
