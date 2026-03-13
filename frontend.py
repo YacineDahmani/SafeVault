@@ -241,6 +241,155 @@ def show_toast(parent, message, duration=2000):
     QTimer.singleShot(duration, toast.accept)
 
 
+# ─── Two-Factor Dialogs ───────────────────────────────────────────────
+class TwoFactorVerifyDialog(QDialog):
+    def __init__(self, backend, parent=None):
+        super().__init__(parent)
+        self.backend = backend
+        self._build()
+
+    def _build(self):
+        self.setWindowTitle("Two-Factor Authentication")
+        self.setMinimumWidth(360)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(12)
+
+        title = QLabel(f"{ICO_HIDE}  Enter 2FA Code")
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+
+        self.code_in = QLineEdit()
+        self.code_in.setPlaceholderText("6-digit code")
+        self.code_in.setMaxLength(8)
+        self.code_in.setMinimumHeight(36)
+        self.code_in.returnPressed.connect(self._verify)
+
+        self.err = QLabel("")
+        self.err.setStyleSheet("color: #ff5555; font-size: 12px;")
+
+        btns = QHBoxLayout()
+        cancel = QPushButton("Cancel")
+        cancel.setObjectName("secondaryBtn")
+        cancel.clicked.connect(self.reject)
+        verify = QPushButton("Verify")
+        verify.clicked.connect(self._verify)
+        btns.addStretch()
+        btns.addWidget(cancel)
+        btns.addWidget(verify)
+
+        lay.addWidget(title)
+        lay.addWidget(self.code_in)
+        lay.addWidget(self.err)
+        lay.addLayout(btns)
+
+    def _verify(self):
+        code = self.code_in.text().strip()
+        if not code:
+            self.err.setText("Code is required")
+            return
+        if self.backend.verify_2fa_code(code):
+            self.accept()
+        else:
+            self.err.setText("Invalid or expired code")
+            self.code_in.selectAll()
+
+
+class TwoFactorSetupDialog(QDialog):
+    def __init__(self, backend, secret, otpauth_uri, parent=None, confirm_required=True):
+        super().__init__(parent)
+        self.backend = backend
+        self.secret = secret
+        self.otpauth_uri = otpauth_uri
+        self.confirm_required = confirm_required
+        self._build()
+
+    def _build(self):
+        self.setWindowTitle("Enable Two-Factor Authentication")
+        self.setMinimumWidth(460)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+
+        title = QLabel(f"{ICO_KEY}  Set Up 2FA")
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        desc = QLabel("Add a new TOTP entry in your authenticator app using the setup key below.")
+        desc.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        desc.setWordWrap(True)
+
+        key_lbl = QLabel("Setup key:")
+        key_lbl.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self.key_box = QLineEdit(self.secret)
+        self.key_box.setReadOnly(True)
+
+        copy_key = QPushButton("Copy Setup Key")
+        copy_key.setObjectName("secondaryBtn")
+        copy_key.clicked.connect(lambda: (pyperclip.copy(self.secret), show_toast(self, "Setup key copied!")))
+
+        uri_lbl = QLabel("otpauth URI (optional):")
+        uri_lbl.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self.uri_box = QLineEdit(self.otpauth_uri)
+        self.uri_box.setReadOnly(True)
+
+        copy_uri = QPushButton("Copy otpauth URI")
+        copy_uri.setObjectName("secondaryBtn")
+        copy_uri.clicked.connect(lambda: (pyperclip.copy(self.otpauth_uri), show_toast(self, "URI copied!")))
+
+        code_lbl = QLabel("Enter a 6-digit code to confirm:")
+        code_lbl.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self.code_in = QLineEdit()
+        self.code_in.setPlaceholderText("6-digit code")
+        self.code_in.setMaxLength(8)
+        self.code_in.setMinimumHeight(36)
+        self.code_in.returnPressed.connect(self._confirm)
+
+        self.err = QLabel("")
+        self.err.setStyleSheet("color: #ff5555; font-size: 12px;")
+
+        btns = QHBoxLayout()
+        close = QPushButton("Cancel")
+        close.setObjectName("secondaryBtn")
+        close.clicked.connect(self.reject)
+        enable = QPushButton("Enable 2FA")
+        enable.clicked.connect(self._confirm)
+        btns.addStretch()
+        btns.addWidget(close)
+        btns.addWidget(enable)
+        if not self.confirm_required:
+            enable.setVisible(False)
+            close.setText("Close")
+
+        lay.addWidget(title)
+        lay.addWidget(desc)
+        lay.addWidget(key_lbl)
+        lay.addWidget(self.key_box)
+        lay.addWidget(copy_key)
+        lay.addWidget(uri_lbl)
+        lay.addWidget(self.uri_box)
+        lay.addWidget(copy_uri)
+        if self.confirm_required:
+            lay.addWidget(code_lbl)
+            lay.addWidget(self.code_in)
+            lay.addWidget(self.err)
+        else:
+            info = QLabel("This is your existing setup key. Keep it private.")
+            info.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+            info.setWordWrap(True)
+            lay.addWidget(info)
+        lay.addLayout(btns)
+
+    def _confirm(self):
+        if not self.confirm_required:
+            self.accept()
+            return
+        code = self.code_in.text().strip()
+        if not code:
+            self.err.setText("Code is required")
+            return
+        if self.backend.verify_2fa_code_for_secret(self.secret, code):
+            self.accept()
+        else:
+            self.err.setText("Invalid or expired code")
+            self.code_in.selectAll()
+
+
 # ─── Login Screen ─────────────────────────────────────────────────────
 class LoginWidget(QWidget):
     def __init__(self, backend, on_success):
@@ -292,7 +441,6 @@ class LoginWidget(QWidget):
 
         btn = QPushButton(f"{ICO_SHOW}  Unlock Vault")
         btn.setMinimumHeight(36)
-        btn.setMaximumHeight(34)
         btn.clicked.connect(self._login)
 
         self.err = QLabel("")
@@ -313,6 +461,11 @@ class LoginWidget(QWidget):
             self.err.setText("Password cannot be empty")
             return
         if self.backend.verify_master_password(p):
+            if self.backend.is_2fa_enabled():
+                d = TwoFactorVerifyDialog(self.backend, self)
+                if d.exec() != QDialog.DialogCode.Accepted:
+                    self.err.setText("2FA verification canceled")
+                    return
             self.err.setText("")
             self.pwd.clear()
             self.on_success()
@@ -1050,6 +1203,27 @@ class SettingsTab(QWidget):
         ielay.addLayout(ierow)
         lay.addWidget(ie_grp)
 
+        # ── Two-Factor Authentication ──
+        twofa_grp = QGroupBox("Two-Factor Authentication (2FA)")
+        tlay = QVBoxLayout(twofa_grp)
+
+        self.twofa_status = QLabel("")
+        self.twofa_status.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+
+        self.twofa_enable_btn = QPushButton("")
+        self.twofa_enable_btn.setMinimumHeight(40)
+        self.twofa_enable_btn.clicked.connect(self._toggle_2fa)
+
+        self.twofa_show_btn = QPushButton("Show Setup Key")
+        self.twofa_show_btn.setObjectName("secondaryBtn")
+        self.twofa_show_btn.setMinimumHeight(36)
+        self.twofa_show_btn.clicked.connect(self._show_2fa_info)
+
+        tlay.addWidget(self.twofa_status)
+        tlay.addWidget(self.twofa_enable_btn)
+        tlay.addWidget(self.twofa_show_btn)
+        lay.addWidget(twofa_grp)
+
         # ── Display Preferences ──
         disp_grp = QGroupBox("Display")
         dlay = QVBoxLayout(disp_grp)
@@ -1068,6 +1242,8 @@ class SettingsTab(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(scroll)
+
+        self._refresh_2fa_ui()
 
     def _make_stat_card(self, value, label, color):
         card = QFrame()
@@ -1330,6 +1506,64 @@ class SettingsTab(QWidget):
             self.vis_btn.setText(f"{ICO_HIDE}  Hide Passwords in List")
         else:
             self.vis_btn.setText(f"{ICO_VIEW}  Show Passwords in List")
+
+    def _refresh_2fa_ui(self):
+        enabled = self.backend.is_2fa_enabled()
+        if enabled:
+            self.twofa_status.setText("2FA is enabled for this vault.")
+            self.twofa_enable_btn.setText(f"{ICO_DEL}  Disable 2FA")
+            self.twofa_enable_btn.setObjectName("dangerBtn")
+            self.twofa_show_btn.setVisible(True)
+        else:
+            self.twofa_status.setText("Add a second step when unlocking your vault.")
+            self.twofa_enable_btn.setText(f"{ICO_KEY}  Enable 2FA")
+            self.twofa_enable_btn.setObjectName("")
+            self.twofa_show_btn.setVisible(False)
+        self.twofa_enable_btn.style().unpolish(self.twofa_enable_btn)
+        self.twofa_enable_btn.style().polish(self.twofa_enable_btn)
+
+    def _toggle_2fa(self):
+        if self.backend.is_2fa_enabled():
+            self._disable_2fa()
+        else:
+            self._enable_2fa()
+
+    def _enable_2fa(self):
+        try:
+            secret = self.backend.generate_2fa_secret()
+            uri = self.backend.build_2fa_otpauth_uri(secret, "LocalVault")
+            d = TwoFactorSetupDialog(self.backend, secret, uri, self)
+            if d.exec() == QDialog.DialogCode.Accepted:
+                self.backend.enable_2fa(secret)
+                show_toast(self, "2FA enabled!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+        self._refresh_2fa_ui()
+
+    def _disable_2fa(self):
+        ret = QMessageBox.warning(
+            self, "Disable 2FA",
+            "This will remove two-factor protection from your vault.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if ret != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.backend.disable_2fa()
+            show_toast(self, "2FA disabled.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+        self._refresh_2fa_ui()
+
+    def _show_2fa_info(self):
+        try:
+            secret = self.backend.get_2fa_secret()
+            uri = self.backend.build_2fa_otpauth_uri(secret, "LocalVault")
+            d = TwoFactorSetupDialog(self.backend, secret, uri, self, confirm_required=False)
+            d.setWindowTitle("2FA Setup Key")
+            d.exec()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
 
 
 # ─── Main Window ──────────────────────────────────────────────────────

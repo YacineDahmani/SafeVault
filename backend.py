@@ -8,6 +8,10 @@ import sqlite3
 import secrets
 import string
 import base64
+import hmac
+import hashlib
+import time
+import urllib.parse
 from datetime import datetime
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -27,6 +31,8 @@ class Backend:
     """
     
     PBKDF2_ITERATIONS = 100_000
+    TOTP_STEP_SECONDS = 30
+    TOTP_DIGITS = 6
     
     def __init__(self, db_path: str = "vault.db"):
         """Initialize the backend with database connection."""
@@ -47,6 +53,16 @@ class Backend:
                 password_hash BLOB NOT NULL
             )
         """)
+        
+        try:
+            cursor.execute("ALTER TABLE master ADD COLUMN twofa_enabled INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE master ADD COLUMN twofa_secret_encrypted BLOB")
+            cursor.execute("ALTER TABLE master ADD COLUMN twofa_secret_salt BLOB")
+        except sqlite3.OperationalError:
+            pass
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS passwords (
@@ -162,6 +178,101 @@ class Backend:
         if derived_hash == row['password_hash']:
             self._encryption_key = derived_hash
             return True
+        return False
+
+    def is_2fa_enabled(self) -> bool:
+        """Check if 2FA is enabled for the vault."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT twofa_enabled FROM master WHERE id = 1")
+        row = cursor.fetchone()
+        return bool(row and row['twofa_enabled'])
+
+    def _get_2fa_secret(self) -> str:
+        """Decrypt and return the 2FA secret."""
+        if not self._encryption_key:
+            raise RuntimeError("No encryption key. Please login first.")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT twofa_secret_encrypted, twofa_secret_salt FROM master WHERE id = 1")
+        row = cursor.fetchone()
+        if not row or not row['twofa_secret_encrypted'] or not row['twofa_secret_salt']:
+            raise RuntimeError("2FA secret not found.")
+        return self.decrypt(row['twofa_secret_encrypted'], row['twofa_secret_salt'])
+
+    def get_2fa_secret(self) -> str:
+        """Public accessor for the 2FA secret (requires unlocked vault)."""
+        return self._get_2fa_secret()
+
+    def generate_2fa_secret(self) -> str:
+        """Generate a new base32 2FA secret."""
+        raw = secrets.token_bytes(20)
+        return base64.b32encode(raw).decode('utf-8').replace('=', '')
+
+    def build_2fa_otpauth_uri(self, secret: str, account_name: str, issuer: str = "SafeVault") -> str:
+        """Build an otpauth:// URI for TOTP setup."""
+        label = f"{issuer}:{account_name}"
+        label_q = urllib.parse.quote(label)
+        issuer_q = urllib.parse.quote(issuer)
+        return f"otpauth://totp/{label_q}?secret={secret}&issuer={issuer_q}&digits={self.TOTP_DIGITS}&period={self.TOTP_STEP_SECONDS}"
+
+    def enable_2fa(self, secret: str) -> None:
+        """Enable 2FA and store encrypted secret."""
+        if not self._encryption_key:
+            raise RuntimeError("No encryption key. Please login first.")
+        salt = os.urandom(16)
+        encrypted = self.encrypt(secret, salt)
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE master SET twofa_enabled = 1, twofa_secret_encrypted = ?, twofa_secret_salt = ? WHERE id = 1",
+            (encrypted, salt)
+        )
+        self.conn.commit()
+
+    def disable_2fa(self) -> None:
+        """Disable 2FA and clear stored secret."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE master SET twofa_enabled = 0, twofa_secret_encrypted = NULL, twofa_secret_salt = NULL WHERE id = 1"
+        )
+        self.conn.commit()
+
+    def verify_2fa_code(self, code: str, window: int = 1) -> bool:
+        """Verify a 2FA code against the stored secret."""
+        if not self.is_2fa_enabled():
+            return False
+        secret = self._get_2fa_secret()
+        return self._verify_totp_code(secret, code, window=window)
+
+    def verify_2fa_code_for_secret(self, secret: str, code: str, window: int = 1) -> bool:
+        """Verify a 2FA code against a provided secret."""
+        return self._verify_totp_code(secret, code, window=window)
+
+    def _normalize_base32_secret(self, secret: str) -> str:
+        s = re.sub(r"\s+", "", secret).upper()
+        pad = (-len(s)) % 8
+        return s + ("=" * pad)
+
+    def _totp(self, secret: str, for_time: int | None = None) -> str:
+        if for_time is None:
+            for_time = int(time.time())
+        counter = int(for_time // self.TOTP_STEP_SECONDS)
+        key = base64.b32decode(self._normalize_base32_secret(secret), casefold=True)
+        msg = counter.to_bytes(8, "big")
+        digest = hmac.new(key, msg, hashlib.sha1).digest()
+        offset = digest[-1] & 0x0F
+        code_int = int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF
+        code = code_int % (10 ** self.TOTP_DIGITS)
+        return str(code).zfill(self.TOTP_DIGITS)
+
+    def _verify_totp_code(self, secret: str, code: str, window: int = 1) -> bool:
+        if not code:
+            return False
+        normalized = re.sub(r"\s+", "", code)
+        if not normalized.isdigit():
+            return False
+        now = int(time.time())
+        for offset in range(-window, window + 1):
+            if self._totp(secret, now + (offset * self.TOTP_STEP_SECONDS)) == normalized:
+                return True
         return False
     
     def encrypt(self, plaintext: str, salt: bytes) -> bytes:

@@ -5,7 +5,7 @@ a = Analysis(
     ['frontend.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('SafeVault.ico', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
