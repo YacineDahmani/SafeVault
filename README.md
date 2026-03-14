@@ -86,4 +86,6 @@ SafeVault/
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-#
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a full list of changes and version history.
