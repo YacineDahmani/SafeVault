@@ -30,6 +30,7 @@ class Backend:
     - All sensitive data (passwords, card numbers, CVV, notes) stored as encrypted BLOBs
     """
     
+    VERSION = "1.1.0"
     PBKDF2_ITERATIONS = 100_000
     TOTP_STEP_SECONDS = 30
     TOTP_DIGITS = 6

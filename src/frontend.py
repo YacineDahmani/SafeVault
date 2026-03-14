@@ -1811,7 +1811,7 @@ class MainWindow(QMainWindow):
     def __init__(self, backend):
         super().__init__()
         self.backend = backend
-        self.setWindowTitle(f"{ICO_HIDE} SafeVault")
+        self.setWindowTitle(f"{ICO_HIDE} SafeVault v{self.backend.VERSION}")
         self.setMinimumSize(1000, 700)
         self.setStyleSheet(ModernStyle.STYLE)
 

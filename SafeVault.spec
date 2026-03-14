@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['frontend.py'],
-    pathex=[],
+    ['main.py'],
+    pathex=['src'],
     binaries=[],
-    datas=[('SafeVault.ico', '.')],
-    hiddenimports=[],
+    datas=[('assets/SafeVault.ico', 'assets')],
+    hiddenimports=['frontend', 'backend'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='SafeVault.ico',
+    icon='assets/SafeVault.ico',
 )

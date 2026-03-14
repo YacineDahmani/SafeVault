@@ -16,6 +16,18 @@
 - **Improved Card View:** Detailed individual view for credit cards with per-field copy buttons and strict input validation.
 - **Password Generator:** Built-in cryptographic random password generator.
 
+## 📁 Project Structure
+
+```text
+SafeVault/
+├── assets/             # Icons and media
+├── src/                # Source code
+│   ├── backend.py      # Core logic and encryption
+│   └── frontend.py     # PySide6 GUI implementation
+├── main.py             # Application entry point
+├── requirements.txt    # Dependencies
+└── SafeVault.spec      # PyInstaller build specification
+```
 
 ## 🛠️ Tech Stack
 
@@ -34,17 +46,12 @@
     cd SafeVault
     ```
 
-2.  **Create and activate a virtual environment (Recommended):**
-    - **Windows:**
-      ```bash
-      python -m venv .venv
-      .venv\Scripts\activate
-      ```
-    - **macOS / Linux:**
-      ```bash
-      python3 -m venv .venv
-      source .venv/bin/activate
-      ```
+2.  **Create and activate a virtual environment:**
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\activate  # Windows
+    # source .venv/bin/activate  # macOS / Linux
+    ```
 
 3.  **Install dependencies:**
     ```bash
@@ -56,7 +63,7 @@
 1.  **Run the application:**
 
     ```bash
-    python frontend.py
+    python main.py
     ```
 
 2.  **First Run:**
@@ -78,3 +85,5 @@
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+#
