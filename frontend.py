@@ -99,10 +99,12 @@ class ModernStyle:
     QPushButton#iconBtn {
         background: transparent;
         border: none;
-        font-size: 18px;
-        padding: 4px 8px;
-        min-width: 30px;
-        max-width: 36px;
+        font-size: 16px;
+        padding: 0px;
+        min-width: 32px;
+        max-width: 32px;
+        min-height: 32px;
+        max-height: 32px;
         color: #cccccc;
     }
     QPushButton#iconBtn:hover {
@@ -112,10 +114,12 @@ class ModernStyle:
     QPushButton#dangerIconBtn {
         background: transparent;
         border: none;
-        font-size: 18px;
-        padding: 4px 8px;
-        min-width: 30px;
-        max-width: 36px;
+        font-size: 16px;
+        padding: 0px;
+        min-width: 32px;
+        max-width: 32px;
+        min-height: 32px;
+        max-height: 32px;
         color: #ff5555;
     }
     QPushButton#dangerIconBtn:hover {
@@ -598,12 +602,14 @@ class PasswordsTab(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(2, 170)
 
         lay.addLayout(tb)
         lay.addWidget(self.table)
@@ -627,27 +633,39 @@ class PasswordsTab(QWidget):
                 hl = QHBoxLayout(w)
                 hl.setContentsMargins(4, 2, 4, 2)
                 hl.setSpacing(4)
+                hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 b_copy = QPushButton(ICO_COPY)
                 b_copy.setObjectName("iconBtn")
                 b_copy.setToolTip("Copy password")
                 b_copy.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_copy.clicked.connect(lambda _, pid=p['id']: self._copy(pid))
+                b_copy.setFixedSize(32, 32)
 
                 b_show = QPushButton(ICO_VIEW)
                 b_show.setObjectName("iconBtn")
                 b_show.setToolTip("Show / hide password")
                 b_show.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_show.clicked.connect(lambda _, pid=p['id'], btn=b_show, row=i: self._toggle_show(pid, btn, row))
+                b_show.setFixedSize(32, 32)
+
+                b_edit = QPushButton(ICO_NOTES)
+                b_edit.setObjectName("iconBtn")
+                b_edit.setToolTip("Edit entry")
+                b_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+                b_edit.clicked.connect(lambda _, pid=p['id']: self._edit_dialog(pid))
+                b_edit.setFixedSize(32, 32)
 
                 b_del = QPushButton(ICO_DEL)
                 b_del.setObjectName("dangerIconBtn")
                 b_del.setToolTip("Delete")
                 b_del.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_del.clicked.connect(lambda _, pid=p['id']: self._delete(pid))
+                b_del.setFixedSize(32, 32)
 
                 hl.addWidget(b_copy)
                 hl.addWidget(b_show)
+                hl.addWidget(b_edit)
                 hl.addWidget(b_del)
                 self.table.setCellWidget(i, 2, w)
             self.table.resizeRowsToContents()
@@ -754,6 +772,73 @@ class PasswordsTab(QWidget):
             else:
                 QMessageBox.warning(self, "Error", "All fields are required!")
 
+    def _edit_dialog(self, pid):
+        try:
+            entry = self.backend.get_password_entry(pid)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        d = QDialog(self)
+        d.setWindowTitle("Edit Password")
+        d.setMinimumWidth(420)
+        lay = QVBoxLayout(d)
+        lay.setSpacing(15)
+
+        t = QLabel("Edit Password Entry")
+        t.setStyleSheet("font-size: 18px; font-weight: bold;")
+        lay.addWidget(t)
+
+        form = QFormLayout()
+        app_in = QLineEdit(entry['app_name'])
+        usr_in = QLineEdit(entry['username'])
+        pwd_in = QLineEdit(entry['password'])
+        pwd_in.setEchoMode(QLineEdit.EchoMode.Password)
+
+        gen = QPushButton(ICO_DICE)
+        gen.setObjectName("secondaryBtn")
+        gen.setToolTip("Generate random password")
+        gen.clicked.connect(lambda: pwd_in.setText(self.backend.generate_password(16)))
+
+        vis = QPushButton(ICO_VIEW)
+        vis.setObjectName("iconBtn")
+        vis.setToolTip("Show password")
+        vis.clicked.connect(lambda: (
+            pwd_in.setEchoMode(QLineEdit.EchoMode.Normal if pwd_in.echoMode() == QLineEdit.EchoMode.Password else QLineEdit.EchoMode.Password),
+            vis.setText(ICO_HIDE if pwd_in.echoMode() == QLineEdit.EchoMode.Normal else ICO_VIEW)
+        ))
+        vis.setFixedSize(32, 32)
+
+        pw = QHBoxLayout()
+        pw.addWidget(pwd_in)
+        pw.addWidget(vis)
+        pw.addWidget(gen)
+
+        form.addRow("App / Website:", app_in)
+        form.addRow("Username:", usr_in)
+        form.addRow("Password:", pw)
+
+        btns = QHBoxLayout()
+        save = QPushButton("Save Changes")
+        save.clicked.connect(d.accept)
+        cancel = QPushButton("Cancel")
+        cancel.setObjectName("secondaryBtn")
+        cancel.clicked.connect(d.reject)
+        btns.addStretch()
+        btns.addWidget(cancel)
+        btns.addWidget(save)
+
+        lay.addLayout(form)
+        lay.addLayout(btns)
+
+        if d.exec() == QDialog.DialogCode.Accepted:
+            a, u, p = app_in.text().strip(), usr_in.text().strip(), pwd_in.text()
+            if a and u and p:
+                self.backend.update_password(pid, a, u, p)
+                self.load_data()
+            else:
+                QMessageBox.warning(self, "Error", "All fields are required!")
+
 
 # ─── Cards Tab ────────────────────────────────────────────────────────
 class CardsTab(QWidget):
@@ -790,12 +875,14 @@ class CardsTab(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(2, 120)
 
         lay.addLayout(tb)
         lay.addWidget(self.table)
@@ -818,20 +905,31 @@ class CardsTab(QWidget):
                 hl = QHBoxLayout(w)
                 hl.setContentsMargins(4, 2, 4, 2)
                 hl.setSpacing(4)
+                hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 b_view = QPushButton(ICO_VIEW)
                 b_view.setObjectName("iconBtn")
                 b_view.setToolTip("View card details")
                 b_view.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_view.clicked.connect(lambda _, cid=c['id']: self._view_card(cid))
+                b_view.setFixedSize(32, 32)
+
+                b_edit = QPushButton(ICO_NOTES)
+                b_edit.setObjectName("iconBtn")
+                b_edit.setToolTip("Edit card")
+                b_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+                b_edit.clicked.connect(lambda _, cid=c['id']: self._edit_dialog(cid))
+                b_edit.setFixedSize(32, 32)
 
                 b_del = QPushButton(ICO_DEL)
                 b_del.setObjectName("dangerIconBtn")
                 b_del.setToolTip("Delete")
                 b_del.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_del.clicked.connect(lambda _, cid=c['id']: self._del(cid))
+                b_del.setFixedSize(32, 32)
 
                 hl.addWidget(b_view)
+                hl.addWidget(b_edit)
                 hl.addWidget(b_del)
                 self.table.setCellWidget(i, 2, w)
             self.table.resizeRowsToContents()
@@ -881,6 +979,7 @@ class CardsTab(QWidget):
                 pyperclip.copy(v),
                 show_toast(self, f"{l} copied!")
             ))
+            cp.setFixedSize(32, 32)
 
             row.addWidget(lbl)
             row.addWidget(val, 1)
@@ -981,6 +1080,92 @@ class CardsTab(QWidget):
             )
             self.load_data()
 
+    def _edit_dialog(self, cid):
+        try:
+            c = self.backend.get_card_details(cid)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        d = QDialog(self)
+        d.setWindowTitle("Edit Card")
+        d.setMinimumWidth(440)
+        lay = QVBoxLayout(d)
+        lay.setSpacing(15)
+
+        t = QLabel("Edit Card Entry")
+        t.setStyleSheet("font-size: 18px; font-weight: bold;")
+        lay.addWidget(t)
+
+        form = QFormLayout()
+        label_in = QLineEdit(c['label'])
+        holder_in = QLineEdit(c['holder_name'])
+
+        num_in = QLineEdit(c['card_number'])
+        num_in.setMaxLength(16)
+        num_in.setValidator(QRegularExpressionValidator(QRegularExpression(r"^\d{0,16}$")))
+
+        exp_in = QLineEdit(c['expiry'])
+        exp_in.setPlaceholderText("MM/YY")
+        exp_in.setMaxLength(5)
+        exp_in.setValidator(QRegularExpressionValidator(QRegularExpression(r"^(0[1-9]|1[0-2])/?([0-9]{0,2})$")))
+
+        cvv_in = QLineEdit(c['cvv'])
+        cvv_in.setEchoMode(QLineEdit.EchoMode.Password)
+        cvv_in.setPlaceholderText("3 or 4 digits")
+        cvv_in.setMaxLength(4)
+        cvv_in.setValidator(QRegularExpressionValidator(QRegularExpression(r"^\d{0,4}$")))
+
+        pin_in = QLineEdit(c.get('pin', ''))
+        pin_in.setEchoMode(QLineEdit.EchoMode.Password)
+        pin_in.setPlaceholderText("4 digits (Optional)")
+        pin_in.setMaxLength(4)
+        pin_in.setValidator(QRegularExpressionValidator(QRegularExpression(r"^\d{0,4}$")))
+
+        form.addRow("Label:", label_in)
+        form.addRow("Cardholder:", holder_in)
+        form.addRow("Card Number:", num_in)
+        form.addRow("Expiry:", exp_in)
+        form.addRow("CVV:", cvv_in)
+        form.addRow("PIN:", pin_in)
+
+        btns = QHBoxLayout()
+        save = QPushButton("Save Changes")
+        save.clicked.connect(d.accept)
+        cancel = QPushButton("Cancel")
+        cancel.setObjectName("secondaryBtn")
+        cancel.clicked.connect(d.reject)
+        btns.addStretch()
+        btns.addWidget(cancel)
+        btns.addWidget(save)
+
+        lay.addLayout(form)
+        lay.addLayout(btns)
+
+        if d.exec() == QDialog.DialogCode.Accepted:
+            num = num_in.text()
+            cvv = cvv_in.text()
+            pin = pin_in.text()
+            if not label_in.text() or not num:
+                QMessageBox.warning(self, "Error", "Label and Card Number are required!")
+                return
+            if len(num) < 13:
+                QMessageBox.warning(self, "Error", "Card Number must be at least 13 digits!")
+                return
+            if cvv and len(cvv) < 3:
+                QMessageBox.warning(self, "Error", "CVV must be 3 or 4 digits!")
+                return
+            if pin and len(pin) < 4:
+                QMessageBox.warning(self, "Error", "PIN must be 4 digits!")
+                return
+
+            self.backend.update_card(
+                cid,
+                label_in.text(), holder_in.text(), num,
+                exp_in.text(), cvv, pin
+            )
+            self.load_data()
+
 
 # ─── Notes Tab ────────────────────────────────────────────────────────
 class NotesTab(QWidget):
@@ -1017,11 +1202,13 @@ class NotesTab(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(40)
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 140)
 
         lay.addLayout(tb)
         lay.addWidget(self.table)
@@ -1041,20 +1228,31 @@ class NotesTab(QWidget):
                 hl = QHBoxLayout(w)
                 hl.setContentsMargins(4, 2, 4, 2)
                 hl.setSpacing(4)
+                hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 b_read = QPushButton(ICO_READ)
                 b_read.setObjectName("iconBtn")
                 b_read.setToolTip("Read note")
                 b_read.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_read.clicked.connect(lambda _, nid=n['id']: self._view(nid))
+                b_read.setFixedSize(32, 32)
+
+                b_edit = QPushButton(ICO_NOTES)
+                b_edit.setObjectName("iconBtn")
+                b_edit.setToolTip("Edit note")
+                b_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+                b_edit.clicked.connect(lambda _, nid=n['id']: self._edit_dialog(nid))
+                b_edit.setFixedSize(32, 32)
 
                 b_del = QPushButton(ICO_DEL)
                 b_del.setObjectName("dangerIconBtn")
                 b_del.setToolTip("Delete")
                 b_del.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_del.clicked.connect(lambda _, nid=n['id']: self._del(nid))
+                b_del.setFixedSize(32, 32)
 
                 hl.addWidget(b_read)
+                hl.addWidget(b_edit)
                 hl.addWidget(b_del)
                 self.table.setCellWidget(i, 1, w)
             self.table.resizeRowsToContents()
@@ -1125,6 +1323,48 @@ class NotesTab(QWidget):
                 QMessageBox.warning(self, "Error", "Title cannot be empty!")
                 return
             self.backend.add_note(title_in.text(), content_in.toPlainText())
+            self.load_data()
+
+    def _edit_dialog(self, nid):
+        try:
+            n = self.backend.get_note_content(nid)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        d = QDialog(self)
+        d.setWindowTitle("Edit Secret Note")
+        d.setMinimumSize(500, 400)
+        lay = QVBoxLayout(d)
+        lay.setSpacing(15)
+
+        t = QLabel("Edit Secret Note")
+        t.setStyleSheet("font-size: 18px; font-weight: bold;")
+        lay.addWidget(t)
+
+        title_in = QLineEdit(n['title'])
+        content_in = QTextEdit()
+        content_in.setPlainText(n['content'])
+
+        btns = QHBoxLayout()
+        save = QPushButton("Save Changes")
+        save.clicked.connect(d.accept)
+        cancel = QPushButton("Cancel")
+        cancel.setObjectName("secondaryBtn")
+        cancel.clicked.connect(d.reject)
+        btns.addStretch()
+        btns.addWidget(cancel)
+        btns.addWidget(save)
+
+        lay.addWidget(title_in)
+        lay.addWidget(content_in)
+        lay.addLayout(btns)
+
+        if d.exec() == QDialog.DialogCode.Accepted:
+            if not title_in.text():
+                QMessageBox.warning(self, "Error", "Title cannot be empty!")
+                return
+            self.backend.update_note(nid, title_in.text(), content_in.toPlainText())
             self.load_data()
 
 

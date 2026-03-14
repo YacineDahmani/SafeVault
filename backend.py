@@ -308,6 +308,22 @@ class Backend:
         )
         self.conn.commit()
         return cursor.lastrowid
+
+    def get_password_entry(self, entry_id: int) -> dict:
+        """Return a password entry with decrypted password."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT app_name, username, password_encrypted, salt FROM passwords WHERE id = ?",
+            (entry_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Password entry {entry_id} not found.")
+        return {
+            'app_name': row['app_name'],
+            'username': row['username'],
+            'password': self.decrypt(row['password_encrypted'], row['salt'])
+        }
     
     def get_all_passwords(self) -> list[dict]:
         """Get all password entries (passwords remain encrypted)."""
@@ -328,6 +344,20 @@ class Backend:
         """Delete a password entry."""
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM passwords WHERE id = ?", (entry_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def update_password(self, entry_id: int, app_name: str, username: str, password: str) -> bool:
+        """Update a password entry and re-encrypt its password."""
+        salt = os.urandom(16)
+        encrypted = self.encrypt(password, salt)
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """UPDATE passwords
+               SET app_name = ?, username = ?, password_encrypted = ?, salt = ?
+               WHERE id = ?""",
+            (app_name, username, encrypted, salt, entry_id)
+        )
         self.conn.commit()
         return cursor.rowcount > 0
  
@@ -401,6 +431,33 @@ class Backend:
         cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         self.conn.commit()
         return cursor.rowcount > 0
+
+    def update_card(self, card_id: int, label: str, holder_name: str,
+                    card_number: str, expiry: str, cvv: str, pin: str) -> bool:
+        """Update a card entry and re-encrypt sensitive fields."""
+        card_salt = os.urandom(16)
+        expiry_salt = os.urandom(16)
+        cvv_salt = os.urandom(16)
+        pin_salt = os.urandom(16)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """UPDATE cards
+               SET label = ?, holder_name = ?,
+                   card_number_encrypted = ?, card_number_salt = ?,
+                   expiry_encrypted = ?, expiry_salt = ?,
+                   cvv_encrypted = ?, cvv_salt = ?,
+                   pin_encrypted = ?, pin_salt = ?
+               WHERE id = ?""",
+            (label, holder_name,
+             self.encrypt(card_number, card_salt), card_salt,
+             self.encrypt(expiry, expiry_salt), expiry_salt,
+             self.encrypt(cvv, cvv_salt), cvv_salt,
+             self.encrypt(pin, pin_salt), pin_salt,
+             card_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
     
     
     def add_note(self, title: str, content: str) -> int:
@@ -439,6 +496,18 @@ class Backend:
         """Delete a note."""
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def update_note(self, note_id: int, title: str, content: str) -> bool:
+        """Update a note and re-encrypt its content."""
+        salt = os.urandom(16)
+        encrypted = self.encrypt(content, salt)
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE notes SET title = ?, content_encrypted = ?, salt = ? WHERE id = ?",
+            (title, encrypted, salt, note_id)
+        )
         self.conn.commit()
         return cursor.rowcount > 0
     
