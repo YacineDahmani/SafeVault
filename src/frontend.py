@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
     QFrame, QFormLayout, QDialog, QScrollArea, QTextEdit, QSizePolicy,
     QFileDialog, QProgressBar, QGridLayout, QGroupBox
 )
-from PySide6.QtCore import Qt, QSize, QTimer, QRegularExpression
-from PySide6.QtGui import QIcon, QFont, QColor, QRegularExpressionValidator
+from PySide6.QtCore import Qt, QSize, QTimer, QRegularExpression, QUrl
+from PySide6.QtGui import QIcon, QFont, QColor, QRegularExpressionValidator, QDesktopServices
 
 import pyperclip
 from backend import Backend
@@ -1390,13 +1390,57 @@ class SettingsTab(QWidget):
         title.setStyleSheet("font-size: 22px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
+        # ── Manual Password Analyzer ──
+        analyzer_grp = QGroupBox("Password Analyzer")
+        alay = QVBoxLayout(analyzer_grp)
+
+        analyzer_hint = QLabel("Check a password before saving it. The password stays local and is never exported.")
+        analyzer_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        analyzer_hint.setWordWrap(True)
+
+        analyzer_row = QHBoxLayout()
+        self.analyzer_input = QLineEdit()
+        self.analyzer_input.setPlaceholderText("Type a password to analyze")
+        self.analyzer_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.analyzer_input.setMinimumHeight(36)
+
+        self.analyzer_toggle = QPushButton(ICO_VIEW)
+        self.analyzer_toggle.setObjectName("iconBtn")
+        self.analyzer_toggle.setToolTip("Show password")
+        self.analyzer_toggle.clicked.connect(self._toggle_analyzer_visibility)
+
+        analyze_btn = QPushButton(f"{ICO_SEARCH}  Analyze")
+        analyze_btn.setMinimumHeight(36)
+        analyze_btn.clicked.connect(self._analyze_custom_password)
+
+        analyzer_row.addWidget(self.analyzer_input, 1)
+        analyzer_row.addWidget(self.analyzer_toggle)
+        analyzer_row.addWidget(analyze_btn)
+
+        self.analyzer_score = QLabel("No analysis yet.")
+        self.analyzer_score.setStyleSheet("font-size: 13px; color: #a0a0a0;")
+        self.analyzer_feedback = QLabel("")
+        self.analyzer_feedback.setStyleSheet("font-size: 12px; color: #d0d0d0;")
+        self.analyzer_feedback.setWordWrap(True)
+
+        alay.addWidget(analyzer_hint)
+        alay.addLayout(analyzer_row)
+        alay.addWidget(self.analyzer_score)
+        alay.addWidget(self.analyzer_feedback)
+        lay.addWidget(analyzer_grp)
+
         # ── Password Health ──
         health_grp = QGroupBox("Password Health Check")
         hlay = QVBoxLayout(health_grp)
 
+        health_hint = QLabel("Runs a full scan for weak, reused, and commonly breached passwords.")
+        health_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        health_hint.setWordWrap(True)
+
         scan_btn = QPushButton(f"{ICO_SEARCH}  Run Security Scan")
         scan_btn.setMinimumHeight(40)
         scan_btn.clicked.connect(self._run_scan)
+        hlay.addWidget(health_hint)
         hlay.addWidget(scan_btn)
 
         self.scan_result = QWidget()
@@ -1476,6 +1520,12 @@ class SettingsTab(QWidget):
         dlay.addWidget(self.vis_btn)
         lay.addWidget(disp_grp)
 
+        credit = QLabel('Built by YacineDahmani • <a href="https://github.com/YacineDahmani">github.com/YacineDahmani</a>')
+        credit.setStyleSheet("font-size: 11px; color: #8f8f8f; padding-top: 8px;")
+        credit.setOpenExternalLinks(False)
+        credit.linkActivated.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
+        lay.addWidget(credit, alignment=Qt.AlignmentFlag.AlignRight)
+
         lay.addStretch()
         scroll.setWidget(content)
 
@@ -1484,6 +1534,49 @@ class SettingsTab(QWidget):
         outer.addWidget(scroll)
 
         self._refresh_2fa_ui()
+
+    def _toggle_analyzer_visibility(self):
+        if self.analyzer_input.echoMode() == QLineEdit.EchoMode.Password:
+            self.analyzer_input.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.analyzer_toggle.setText(ICO_HIDE)
+            self.analyzer_toggle.setToolTip("Hide password")
+        else:
+            self.analyzer_input.setEchoMode(QLineEdit.EchoMode.Password)
+            self.analyzer_toggle.setText(ICO_VIEW)
+            self.analyzer_toggle.setToolTip("Show password")
+
+    def _analyze_custom_password(self):
+        pwd = self.analyzer_input.text()
+        if not pwd:
+            self.analyzer_score.setText("Enter a password to analyze.")
+            self.analyzer_score.setStyleSheet("font-size: 13px; color: #ff8c8c;")
+            self.analyzer_feedback.setText("")
+            return
+
+        result = self.backend.calculate_password_strength(pwd)
+        score = result['score']
+        rating = result['rating']
+        issues = result.get('issues', [])
+        recommendations = result.get('recommendations', [])
+
+        if score >= 85:
+            color = "#27ae60"
+        elif score >= 65:
+            color = "#f39c12"
+        else:
+            color = "#e74c3c"
+
+        self.analyzer_score.setText(f"Score: {score}/100 • {rating}")
+        self.analyzer_score.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {color};")
+
+        lines = []
+        if issues:
+            lines.append("Issues: " + "; ".join(issues[:4]))
+        if recommendations:
+            lines.append("Tips: " + " ".join(recommendations[:3]))
+        if not lines:
+            lines.append("Looks strong. Keep using unique passwords per account.")
+        self.analyzer_feedback.setText("\n".join(lines))
 
     def _make_stat_card(self, value, label, color):
         card = QFrame()
@@ -1647,6 +1740,12 @@ class SettingsTab(QWidget):
                 ICO_WARN, f"{count} Reused Password Group{'s' if count > 1 else ''}",
                 "Using the same password across accounts is risky.", "#f39c12"
             ))
+            for group in report['duplicate_groups'][:5]:
+                apps = ", ".join(item['app_name'] for item in group[:4])
+                extra = "" if len(group) <= 4 else f" +{len(group) - 4} more"
+                self.scan_result_lay.addWidget(self._make_issue_card(
+                    "\u2022", "Password reused across:", f"{apps}{extra}", "#f39c12"
+                ))
 
         if report['common_passwords']:
             count = len(report['common_passwords'])
@@ -1654,6 +1753,24 @@ class SettingsTab(QWidget):
                 ICO_WARN, f"{count} Commonly Breached Password{'s' if count > 1 else ''}",
                 "These passwords appear in known breach databases.", "#e74c3c"
             ))
+            for cp in report['common_passwords'][:8]:
+                self.scan_result_lay.addWidget(self._make_issue_card(
+                    "\u2022", cp['app_name'], "Uses a common or easily guessed password.", "#e74c3c"
+                ))
+
+        if report['weak_passwords']:
+            unique_reco = []
+            for item in report['weak_passwords']:
+                for reco in item.get('recommendations', []):
+                    if reco not in unique_reco:
+                        unique_reco.append(reco)
+            if unique_reco:
+                self.scan_result_lay.addWidget(self._make_issue_card(
+                    ICO_CHECK,
+                    "Recommended Fixes",
+                    " ".join(unique_reco[:4]),
+                    "#4da3ff"
+                ))
 
         if not has_issues:
             ok_frame = QFrame()

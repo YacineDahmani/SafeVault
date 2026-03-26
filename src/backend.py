@@ -12,6 +12,7 @@ import hmac
 import hashlib
 import time
 import urllib.parse
+import math
 from datetime import datetime
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -553,16 +554,67 @@ class Backend:
         "login", "user", "user123", "default", "hello", "hello123"
     }
 
-    def calculate_password_strength(self, password: str) -> dict:
+    def _normalize_for_common_lookup(self, password: str) -> str:
+        """Normalize password for common-password checks."""
+        lowered = password.lower().strip()
+        trans = str.maketrans({
+            '@': 'a',
+            '$': 's',
+            '0': 'o',
+            '1': 'i',
+            '!': 'i',
+            '3': 'e',
+            '5': 's',
+            '7': 't',
+        })
+        normalized = lowered.translate(trans)
+        return re.sub(r'[^a-z0-9]', '', normalized)
+
+    def _has_long_sequence(self, password: str, min_len: int = 4) -> bool:
+        """Detect ascending or descending alphanumeric sequences."""
+        cleaned = ''.join(ch for ch in password.lower() if ch.isalnum())
+        if len(cleaned) < min_len:
+            return False
+
+        run_up = 1
+        run_down = 1
+        for i in range(1, len(cleaned)):
+            prev_ord = ord(cleaned[i - 1])
+            cur_ord = ord(cleaned[i])
+            if cur_ord == prev_ord + 1:
+                run_up += 1
+                run_down = 1
+            elif cur_ord == prev_ord - 1:
+                run_down += 1
+                run_up = 1
+            else:
+                run_up = 1
+                run_down = 1
+
+            if run_up >= min_len or run_down >= min_len:
+                return True
+        return False
+
+    def calculate_password_strength(self, password: str, context_texts: list[str] | None = None) -> dict:
         """
         Calculate password strength score and identify issues.
         Returns: {score: 0-100, rating: str, issues: list[str]}
         """
+        if not password:
+            return {
+                'score': 0,
+                'rating': 'Weak',
+                'issues': ['Password is empty'],
+                'recommendations': ['Use at least 12 characters with mixed character types.']
+            }
+
         score = 0
         issues = []
         
         length = len(password)
-        if length >= 16:
+        if length >= 20:
+            score += 35
+        elif length >= 16:
             score += 30
         elif length >= 12:
             score += 25
@@ -580,7 +632,7 @@ class Backend:
         has_special = bool(re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password))
         
         variety_count = sum([has_lower, has_upper, has_digit, has_special])
-        score += variety_count * 10
+        score += variety_count * 5
         
         if not has_upper:
             issues.append("No uppercase letters")
@@ -598,12 +650,20 @@ class Backend:
         for seq in sequential:
             if seq in password.lower():
                 score -= 10
-                issues.append("Contains sequential pattern")
+                issues.append("Contains short sequential pattern")
                 break
+
+        if self._has_long_sequence(password, min_len=4):
+            score -= 12
+            issues.append("Contains long ascending/descending sequence")
         
         if re.search(r'(.)\1{2,}', password):
             score -= 10
             issues.append("Contains repeated characters")
+
+        if re.search(r'(.{2,4})\1{1,}', password):
+            score -= 10
+            issues.append("Contains repeated pattern blocks")
         
         keyboard_patterns = ['qwerty', 'asdfgh', 'zxcvbn', '!@#$%^', 'qazwsx']
         for pattern in keyboard_patterns:
@@ -611,26 +671,82 @@ class Backend:
                 score -= 10
                 issues.append("Contains keyboard pattern")
                 break
+
+        if re.search(r'(19\d{2}|20\d{2})', password):
+            score -= 6
+            issues.append("Contains a year-like pattern")
+
+        if context_texts:
+            pw_l = password.lower()
+            for raw in context_texts:
+                if not raw:
+                    continue
+                token = re.sub(r'[^a-z0-9]', '', raw.lower())
+                if len(token) >= 3 and token in re.sub(r'[^a-z0-9]', '', pw_l):
+                    score -= 15
+                    issues.append(f"Contains account-related word: '{raw}'")
+                    break
+
+        if self.check_common_password(password):
+            score -= 35
+            issues.append("Matches a commonly breached password")
         
         unique_chars = len(set(password))
-        entropy_bonus = min(30, unique_chars * 2)
-        score += entropy_bonus
+        charset_size = 0
+        if has_lower:
+            charset_size += 26
+        if has_upper:
+            charset_size += 26
+        if has_digit:
+            charset_size += 10
+        if has_special:
+            charset_size += 33
+        if charset_size:
+            entropy_bits = length * math.log2(charset_size)
+            score += min(20, int(entropy_bits / 6))
+
+        diversity_ratio = unique_chars / max(1, length)
+        if diversity_ratio < 0.5 and length >= 8:
+            score -= 8
+            issues.append("Low character diversity")
         
         score = max(0, min(100, score))
         
-        if score >= 80:
+        if score >= 85:
             rating = "Strong"
-        elif score >= 60:
+        elif score >= 65:
             rating = "Good"
-        elif score >= 40:
+        elif score >= 45:
             rating = "Fair"
         else:
             rating = "Weak"
+
+        recommendations = []
+        if any("short" in issue.lower() for issue in issues):
+            recommendations.append("Increase length to at least 12 characters.")
+        if any("uppercase" in issue.lower() for issue in issues):
+            recommendations.append("Add uppercase letters.")
+        if any("lowercase" in issue.lower() for issue in issues):
+            recommendations.append("Add lowercase letters.")
+        if any("numbers" in issue.lower() for issue in issues):
+            recommendations.append("Add numbers.")
+        if any("special" in issue.lower() for issue in issues):
+            recommendations.append("Add symbols like ! @ # $.")
+        if any("common" in issue.lower() or "breached" in issue.lower() for issue in issues):
+            recommendations.append("Avoid known/common passwords entirely.")
+        if any("sequence" in issue.lower() or "pattern" in issue.lower() for issue in issues):
+            recommendations.append("Avoid predictable sequences and repeated chunks.")
+        if any("account-related" in issue.lower() for issue in issues):
+            recommendations.append("Remove words tied to the app or username.")
+
+        if not recommendations and rating in ["Fair", "Weak"]:
+            recommendations.append("Use a longer random password from the generator.")
         
         return {
             'score': score,
             'rating': rating,
-            'issues': issues
+            'issues': issues,
+            'recommendations': recommendations
         }
 
     def get_all_decrypted_passwords(self) -> list[dict]:
@@ -673,7 +789,15 @@ class Backend:
 
     def check_common_password(self, password: str) -> bool:
         """Check if password matches a commonly breached password (local check only)."""
-        return password.lower() in self.COMMON_PASSWORDS
+        lowered = password.lower().strip()
+        normalized = self._normalize_for_common_lookup(password)
+
+        if lowered in self.COMMON_PASSWORDS or normalized in self.COMMON_PASSWORDS:
+            return True
+
+        # Common pattern: base password plus short numeric suffix
+        base = re.sub(r'\d{1,4}$', '', normalized)
+        return bool(base and base in self.COMMON_PASSWORDS)
 
     def run_security_scan(self) -> dict:
         """
@@ -688,7 +812,10 @@ class Backend:
         total_score = 0
         
         for entry in entries:
-            strength = self.calculate_password_strength(entry['password'])
+            strength = self.calculate_password_strength(
+                entry['password'],
+                context_texts=[entry['app_name'], entry['username']]
+            )
             rating_key = strength['rating'].lower()
             strength_distribution[rating_key] += 1
             total_score += strength['score']
@@ -699,7 +826,8 @@ class Backend:
                     'app_name': entry['app_name'],
                     'score': strength['score'],
                     'rating': strength['rating'],
-                    'issues': strength['issues']
+                    'issues': strength['issues'],
+                    'recommendations': strength.get('recommendations', [])
                 })
             
             if self.check_common_password(entry['password']):
