@@ -22,8 +22,15 @@
 SafeVault/
 ├── assets/             # Icons and media
 ├── src/                # Source code
-│   ├── backend.py      # Core logic and encryption
-│   └── frontend.py     # PySide6 GUI implementation
+│   ├── backend.py       # Backward-compatible backend import
+│   ├── backend_pkg/
+│   │   ├── __init__.py
+│   │   └── core.py      # Core logic and encryption
+│   ├── frontend.py      # Backward-compatible frontend import
+│   └── frontend_pkg/
+│       ├── __init__.py
+│       ├── app.py       # GUI application entrypoint
+│       └── views.py     # PySide6 GUI implementation
 ├── main.py             # Application entry point
 ├── requirements.txt    # Dependencies
 └── SafeVault.spec      # PyInstaller build specification
@@ -88,4 +95,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📝 Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for a full list of changes and version history.
+See [CHANGELOG.md](CHANGELOG.md) for a full list of changes and version history.
