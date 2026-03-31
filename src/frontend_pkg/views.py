@@ -25,6 +25,7 @@ ICO_READ   = "\uE736"   # dictionary/book
 ICO_ADD    = "\uE710"   # add/+
 ICO_REFRESH = "\uE72C"  # refresh
 ICO_CARD   = "\uE8C7"   # credit card
+ICO_ENV    = "\uE943"   # file code
 ICO_ROCKET = "\uEB4F"   # rocket
 ICO_DICE   = "\uE14B"   # shuffle/generator
 ICO_KEY    = "\uE8D7"   # key
@@ -1165,6 +1166,262 @@ class CardsTab(QWidget):
             self.load_data()
 
 
+# ─── .env Files Tab ──────────────────────────────────────────────────
+class EnvFilesTab(QWidget):
+    def __init__(self, backend):
+        super().__init__()
+        self.backend = backend
+        self._build()
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(15)
+
+        tb = QHBoxLayout()
+        title = QLabel(".env Files")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
+
+        add = QPushButton(f"{ICO_ADD}  Add .env")
+        add.clicked.connect(self._add_dialog)
+
+        ref = QPushButton(f"{ICO_REFRESH}")
+        ref.setObjectName("secondaryBtn")
+        ref.setToolTip("Refresh")
+        ref.clicked.connect(lambda: self.load_data())
+
+        tb.addWidget(title)
+        tb.addStretch()
+        tb.addWidget(ref)
+        tb.addWidget(add)
+
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["File Label", "Actions"])
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.setShowGrid(False)
+        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        h = self.table.horizontalHeader()
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 140)
+
+        lay.addLayout(tb)
+        lay.addWidget(self.table)
+
+    def load_data(self, q=None):
+        self.table.setRowCount(0)
+        try:
+            entries = (self.backend.search_vault(q)['env_files'] if q
+                       else self.backend.get_all_env_files())
+            self.table.setRowCount(len(entries))
+            for i, e in enumerate(entries):
+                item0 = QTableWidgetItem(e['label'])
+                item0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(i, 0, item0)
+
+                w = QWidget()
+                hl = QHBoxLayout(w)
+                hl.setContentsMargins(4, 2, 4, 2)
+                hl.setSpacing(4)
+                hl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                b_view = QPushButton(ICO_VIEW)
+                b_view.setObjectName("iconBtn")
+                b_view.setToolTip("View .env content")
+                b_view.setCursor(Qt.CursorShape.PointingHandCursor)
+                b_view.clicked.connect(lambda _, eid=e['id']: self._view(eid))
+                b_view.setFixedSize(32, 32)
+
+                b_edit = QPushButton(ICO_NOTES)
+                b_edit.setObjectName("iconBtn")
+                b_edit.setToolTip("Edit .env file")
+                b_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+                b_edit.clicked.connect(lambda _, eid=e['id']: self._edit_dialog(eid))
+                b_edit.setFixedSize(32, 32)
+
+                b_del = QPushButton(ICO_DEL)
+                b_del.setObjectName("dangerIconBtn")
+                b_del.setToolTip("Delete")
+                b_del.setCursor(Qt.CursorShape.PointingHandCursor)
+                b_del.clicked.connect(lambda _, eid=e['id']: self._del(eid))
+                b_del.setFixedSize(32, 32)
+
+                hl.addWidget(b_view)
+                hl.addWidget(b_edit)
+                hl.addWidget(b_del)
+                self.table.setCellWidget(i, 1, w)
+            self.table.resizeRowsToContents()
+        except Exception as e:
+            print(".env load error:", e)
+
+    def _view(self, env_id):
+        try:
+            env_entry = self.backend.get_env_file_content(env_id)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        d = QDialog(self)
+        d.setWindowTitle(f".env: {env_entry['label']}")
+        d.setMinimumSize(620, 450)
+        lay = QVBoxLayout(d)
+        lay.setSpacing(12)
+
+        t = QLabel(f"{ICO_ENV}  {env_entry['label']}")
+        t.setStyleSheet("font-size: 18px; font-weight: bold; color: #0078D4;")
+        lay.addWidget(t)
+
+        content = QTextEdit()
+        content.setReadOnly(True)
+        content.setPlainText(env_entry['content'])
+        lay.addWidget(content)
+
+        btns = QHBoxLayout()
+        copy_btn = QPushButton(f"{ICO_COPY}  Copy All")
+        copy_btn.setObjectName("secondaryBtn")
+        copy_btn.clicked.connect(lambda: (pyperclip.copy(env_entry['content']), show_toast(self, ".env content copied!")))
+
+        close = QPushButton("Close")
+        close.clicked.connect(d.accept)
+
+        btns.addWidget(copy_btn)
+        btns.addStretch()
+        btns.addWidget(close)
+        lay.addLayout(btns)
+
+        d.exec()
+
+    def _del(self, env_id):
+        if QMessageBox.question(
+            self, "Confirm Delete", "Delete this .env entry?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        ) == QMessageBox.StandardButton.Yes:
+            self.backend.delete_env_file(env_id)
+            self.load_data()
+
+    def _load_env_file(self, editor_widget: QTextEdit):
+        path, _ = QFileDialog.getOpenFileName(self, "Select .env File", "", "Env Files (*.env);;All Files (*)")
+        if not path:
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                editor_widget.setPlainText(f.read())
+            show_toast(self, "Loaded .env file")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def _add_dialog(self):
+        d = QDialog(self)
+        d.setWindowTitle("Add .env File")
+        d.setMinimumSize(620, 450)
+        lay = QVBoxLayout(d)
+        lay.setSpacing(15)
+
+        t = QLabel("New .env File")
+        t.setStyleSheet("font-size: 18px; font-weight: bold;")
+        lay.addWidget(t)
+
+        form = QFormLayout()
+        label_in = QLineEdit()
+        label_in.setPlaceholderText("e.g. Production API")
+        content_in = QTextEdit()
+        content_in.setPlaceholderText("API_KEY=...\nDATABASE_URL=...\nDEBUG=false")
+
+        form.addRow("Label:", label_in)
+        form.addRow("Content:", content_in)
+
+        btns = QHBoxLayout()
+        load_btn = QPushButton(f"{ICO_UPLOAD}  Load .env File")
+        load_btn.setObjectName("secondaryBtn")
+        load_btn.clicked.connect(lambda: self._load_env_file(content_in))
+
+        save = QPushButton("Save")
+        save.clicked.connect(d.accept)
+        cancel = QPushButton("Cancel")
+        cancel.setObjectName("secondaryBtn")
+        cancel.clicked.connect(d.reject)
+
+        btns.addWidget(load_btn)
+        btns.addStretch()
+        btns.addWidget(cancel)
+        btns.addWidget(save)
+
+        lay.addLayout(form)
+        lay.addLayout(btns)
+
+        if d.exec() == QDialog.DialogCode.Accepted:
+            label = label_in.text().strip()
+            content = content_in.toPlainText()
+            if not label:
+                QMessageBox.warning(self, "Error", "Label is required!")
+                return
+            if not content.strip():
+                QMessageBox.warning(self, "Error", ".env content cannot be empty!")
+                return
+            self.backend.add_env_file(label, content)
+            self.load_data()
+
+    def _edit_dialog(self, env_id):
+        try:
+            env_entry = self.backend.get_env_file_content(env_id)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        d = QDialog(self)
+        d.setWindowTitle("Edit .env File")
+        d.setMinimumSize(620, 450)
+        lay = QVBoxLayout(d)
+        lay.setSpacing(15)
+
+        t = QLabel("Edit .env File")
+        t.setStyleSheet("font-size: 18px; font-weight: bold;")
+        lay.addWidget(t)
+
+        form = QFormLayout()
+        label_in = QLineEdit(env_entry['label'])
+        content_in = QTextEdit()
+        content_in.setPlainText(env_entry['content'])
+
+        form.addRow("Label:", label_in)
+        form.addRow("Content:", content_in)
+
+        btns = QHBoxLayout()
+        load_btn = QPushButton(f"{ICO_UPLOAD}  Load .env File")
+        load_btn.setObjectName("secondaryBtn")
+        load_btn.clicked.connect(lambda: self._load_env_file(content_in))
+
+        save = QPushButton("Save Changes")
+        save.clicked.connect(d.accept)
+        cancel = QPushButton("Cancel")
+        cancel.setObjectName("secondaryBtn")
+        cancel.clicked.connect(d.reject)
+
+        btns.addWidget(load_btn)
+        btns.addStretch()
+        btns.addWidget(cancel)
+        btns.addWidget(save)
+
+        lay.addLayout(form)
+        lay.addLayout(btns)
+
+        if d.exec() == QDialog.DialogCode.Accepted:
+            label = label_in.text().strip()
+            content = content_in.toPlainText()
+            if not label:
+                QMessageBox.warning(self, "Error", "Label is required!")
+                return
+            if not content.strip():
+                QMessageBox.warning(self, "Error", ".env content cannot be empty!")
+                return
+            self.backend.update_env_file(env_id, label, content)
+            self.load_data()
+
+
 # ─── Notes Tab ────────────────────────────────────────────────────────
 class NotesTab(QWidget):
     def __init__(self, backend):
@@ -1827,7 +2084,7 @@ class SettingsTab(QWidget):
         ret = QMessageBox.warning(
             self, "Export Warning",
             f"{ICO_WARN}  Exporting as JSON will save all your passwords, cards, "
-            "and notes in plain text (unencrypted).\n\n"
+            "notes, and .env files in plain text (unencrypted).\n\n"
             "Anyone with access to this file can read your data.\n"
             "Only use this for migration purposes and delete the file after.\n\n"
             "Continue?",
@@ -1978,11 +2235,13 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.pw_tab = PasswordsTab(self.backend)
         self.cd_tab = CardsTab(self.backend)
+        self.env_tab = EnvFilesTab(self.backend)
         self.nt_tab = NotesTab(self.backend)
         self.st_tab = SettingsTab(self.backend, self)
 
         self.tabs.addTab(self.pw_tab, f"{ICO_KEY} Passwords")
         self.tabs.addTab(self.cd_tab, f"{ICO_CARD} Cards")
+        self.tabs.addTab(self.env_tab, f"{ICO_ENV} .env Files")
         self.tabs.addTab(self.nt_tab, f"{ICO_NOTES} Notes")
         self.tabs.addTab(self.st_tab, f"{ICO_SETTINGS} Settings")
 
@@ -2001,10 +2260,12 @@ class MainWindow(QMainWindow):
         q = text.strip() if text.strip() else None
         self.pw_tab.load_data(q)
         self.cd_tab.load_data(q)
+        self.env_tab.load_data(q)
         self.nt_tab.load_data(q)
 
     def _refresh_all(self):
         self.pw_tab.load_data()
         self.cd_tab.load_data()
+        self.env_tab.load_data()
         self.nt_tab.load_data()
 

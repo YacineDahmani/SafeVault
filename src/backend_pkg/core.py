@@ -109,6 +109,16 @@ class Backend:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS env_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL,
+                content_encrypted BLOB NOT NULL,
+                salt BLOB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tags (
@@ -458,6 +468,61 @@ class Backend:
              self.encrypt(pin, pin_salt), pin_salt,
              card_id)
         )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def add_env_file(self, label: str, content: str) -> int:
+        """Add a new encrypted .env file entry."""
+        salt = os.urandom(16)
+        encrypted = self.encrypt(content, salt)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO env_files (label, content_encrypted, salt) VALUES (?, ?, ?)",
+            (label, encrypted, salt)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_all_env_files(self) -> list[dict]:
+        """Get all stored .env file entries (content remains encrypted)."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, label, created_at FROM env_files ORDER BY label")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_env_file_content(self, env_file_id: int) -> dict:
+        """Decrypt and return .env file content."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT label, content_encrypted, salt FROM env_files WHERE id = ?",
+            (env_file_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f".env entry {env_file_id} not found.")
+
+        return {
+            'label': row['label'],
+            'content': self.decrypt(row['content_encrypted'], row['salt'])
+        }
+
+    def update_env_file(self, env_file_id: int, label: str, content: str) -> bool:
+        """Update a stored .env file and re-encrypt content."""
+        salt = os.urandom(16)
+        encrypted = self.encrypt(content, salt)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE env_files SET label = ?, content_encrypted = ?, salt = ? WHERE id = ?",
+            (label, encrypted, salt, env_file_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_env_file(self, env_file_id: int) -> bool:
+        """Delete a stored .env file entry."""
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM env_files WHERE id = ?", (env_file_id,))
         self.conn.commit()
         return cursor.rowcount > 0
     
@@ -930,7 +995,8 @@ class Backend:
         results = {
             'passwords': [],
             'cards': [],
-            'notes': []
+            'notes': [],
+            'env_files': []
         }
         
         cursor = self.conn.cursor()
@@ -957,6 +1023,12 @@ class Backend:
             WHERE lower(title) LIKE ?
         """, (f"%{query}%",))
         results['notes'] = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT id, label, created_at FROM env_files
+            WHERE lower(label) LIKE ?
+        """, (f"%{query}%",))
+        results['env_files'] = [dict(row) for row in cursor.fetchall()]
         
         cursor.execute("""
             SELECT DISTINCT entry_id, entry_type FROM entry_tags et
@@ -986,6 +1058,12 @@ class Backend:
                     cursor.execute("SELECT id, title, created_at FROM notes WHERE id = ?", (entry_id,))
                     row = cursor.fetchone()
                     if row: results['notes'].append(dict(row))
+            elif entry_type == 'env_file':
+                if not any(r['id'] == entry_id for r in results['env_files']):
+                    cursor.execute("SELECT id, label, created_at FROM env_files WHERE id = ?", (entry_id,))
+                    row = cursor.fetchone()
+                    if row:
+                        results['env_files'].append(dict(row))
 
         return results
     
@@ -1010,6 +1088,7 @@ class Backend:
             'passwords': [],
             'cards': [],
             'notes': [],
+            'env_files': [],
             'export_date': datetime.now().isoformat()
         }
         
@@ -1036,6 +1115,13 @@ class Backend:
         for row in cursor.fetchall():
             try:
                 data['notes'].append(self.get_note_content(row['id']))
+            except Exception:
+                continue
+
+        cursor.execute("SELECT id FROM env_files")
+        for row in cursor.fetchall():
+            try:
+                data['env_files'].append(self.get_env_file_content(row['id']))
             except Exception:
                 continue
                 
