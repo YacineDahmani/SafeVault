@@ -2194,12 +2194,10 @@ class MainWindow(QMainWindow):
     def _setup_screens(self):
         self.login_w = LoginWidget(self.backend, self._on_login)
         self.setup_w = SetupWidget(self.backend, self._on_login)
-        self.vault_w = QWidget()
-        self._init_vault()
+        self.vault_w = None  # Defer construction until successful login
 
         self.stack.addWidget(self.login_w)
         self.stack.addWidget(self.setup_w)
-        self.stack.addWidget(self.vault_w)
 
         if self.backend.is_first_run():
             self.stack.setCurrentWidget(self.setup_w)
@@ -2245,27 +2243,51 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.nt_tab, f"{ICO_NOTES} Notes")
         self.tabs.addTab(self.st_tab, f"{ICO_SETTINGS} Settings")
 
+        self._loaded_tabs = set()
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
         lay.addLayout(hdr)
         lay.addWidget(self.tabs)
 
     def _on_login(self):
+        if self.vault_w is None:
+            self.vault_w = QWidget()
+            self._init_vault()
+            self.stack.addWidget(self.vault_w)
+        
         self.stack.setCurrentWidget(self.vault_w)
         self._refresh_all()
 
     def lock_vault(self):
         self.backend._encryption_key = None
+        if self.vault_w is not None:
+            self.stack.removeWidget(self.vault_w)
+            self.vault_w.deleteLater()
+            self.vault_w = None
         self.stack.setCurrentWidget(self.login_w)
+
+    def _on_tab_changed(self, index):
+        active_tab = self.tabs.widget(index)
+        if active_tab in (self.pw_tab, self.cd_tab, self.env_tab, self.nt_tab):
+            if active_tab not in self._loaded_tabs:
+                q = self.search.text().strip() if self.search.text().strip() else None
+                active_tab.load_data(q)
+                self._loaded_tabs.add(active_tab)
 
     def _on_search(self, text):
         q = text.strip() if text.strip() else None
-        self.pw_tab.load_data(q)
-        self.cd_tab.load_data(q)
-        self.env_tab.load_data(q)
-        self.nt_tab.load_data(q)
+        self._loaded_tabs.clear()
+        active_tab = self.tabs.currentWidget()
+        if active_tab in (self.pw_tab, self.cd_tab, self.env_tab, self.nt_tab):
+            active_tab.load_data(q)
+            self._loaded_tabs.add(active_tab)
 
     def _refresh_all(self):
-        self.pw_tab.load_data()
-        self.cd_tab.load_data()
-        self.env_tab.load_data()
-        self.nt_tab.load_data()
+        self._loaded_tabs.clear()
+        active_tab = self.tabs.currentWidget()
+        if active_tab in (self.pw_tab, self.cd_tab, self.env_tab, self.nt_tab):
+            q = self.search.text().strip() if self.search.text().strip() else None
+            active_tab.load_data(q)
+            self._loaded_tabs.add(active_tab)
+
 

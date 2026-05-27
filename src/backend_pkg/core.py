@@ -287,26 +287,49 @@ class Backend:
                 return True
         return False
     
+    def _derive_entry_key(self, master_key_str: str, salt: bytes, fast: bool = True) -> bytes:
+        """
+        Derive a cryptographic subkey from the master key.
+        Uses 1 iteration of PBKDF2 for high speed when fast=True (since master key is already high entropy).
+        Uses 100,000 iterations for legacy compatibility when fast=False.
+        """
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=1 if fast else self.PBKDF2_ITERATIONS,
+        )
+        derived_key = kdf.derive(master_key_str.encode('utf-8'))
+        return base64.urlsafe_b64encode(derived_key)
+
     def encrypt(self, plaintext: str, salt: bytes) -> bytes:
         """Encrypt plaintext using Fernet with derived key."""
         if not self._encryption_key:
             raise RuntimeError("No encryption key. Please login first.")
         
-        entry_key = self.derive_key(self._encryption_key.decode('utf-8'), salt)
+        entry_key = self._derive_entry_key(self._encryption_key.decode('utf-8'), salt, fast=True)
         fernet = Fernet(entry_key)
         return fernet.encrypt(plaintext.encode('utf-8'))
     
     def decrypt(self, ciphertext: bytes, salt: bytes) -> str:
-        """Decrypt ciphertext using Fernet with derived key."""
+        """Decrypt ciphertext using Fernet with derived key, with backward compatibility."""
         if not self._encryption_key:
             raise RuntimeError("No encryption key. Please login first.")
         
-        entry_key = self.derive_key(self._encryption_key.decode('utf-8'), salt)
-        fernet = Fernet(entry_key)
+        # Try fast key derivation first (1 iteration)
+        entry_key_fast = self._derive_entry_key(self._encryption_key.decode('utf-8'), salt, fast=True)
+        fernet_fast = Fernet(entry_key_fast)
         try:
-            return fernet.decrypt(ciphertext).decode('utf-8')
-        except InvalidToken:
-            raise ValueError("Decryption failed. Data may be corrupted.")
+            return fernet_fast.decrypt(ciphertext).decode('utf-8')
+        except (InvalidToken, ValueError):
+            # Fallback to slow key derivation (legacy 100,000 iterations)
+            entry_key_slow = self._derive_entry_key(self._encryption_key.decode('utf-8'), salt, fast=False)
+            fernet_slow = Fernet(entry_key_slow)
+            try:
+                return fernet_slow.decrypt(ciphertext).decode('utf-8')
+            except InvalidToken:
+                raise ValueError("Decryption failed. Data may be corrupted.")
+
    
     def add_password(self, app_name: str, username: str, password: str) -> int:
         """Add a new password entry."""
