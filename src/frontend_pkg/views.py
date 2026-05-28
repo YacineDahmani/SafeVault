@@ -3,6 +3,8 @@ SafeVault Frontend - PySide6 GUI
 """
 
 import json
+import sys
+from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTabWidget,
@@ -36,6 +38,14 @@ ICO_SAVE   = "\uE74E"   # save
 ICO_UPLOAD = "\uE78C"   # upload
 ICO_WARN   = "\uE7BA"   # warning
 ICO_CHECK  = "\uE73E"   # checkmark
+
+
+def get_app_icon_path():
+    if getattr(sys, "frozen", False):
+        base_path = Path(sys._MEIPASS)
+    else:
+        base_path = Path(__file__).resolve().parents[2]
+    return base_path / "assets" / "SafeVault.ico"
 
 
 class ModernStyle:
@@ -2183,7 +2193,8 @@ class MainWindow(QMainWindow):
     def __init__(self, backend):
         super().__init__()
         self.backend = backend
-        self.setWindowTitle(f"{ICO_HIDE} SafeVault v{self.backend.VERSION}")
+        self.setWindowIcon(QIcon(str(get_app_icon_path())))
+        self.setWindowTitle(f"SafeVault v{self.backend.VERSION}")
         self.setMinimumSize(1000, 700)
         self.setStyleSheet(ModernStyle.STYLE)
 
