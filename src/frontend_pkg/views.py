@@ -49,6 +49,14 @@ def get_app_icon_path():
     return base_path / "assets" / "SafeVault.ico"
 
 
+def get_asset_path(filename):
+    if getattr(sys, "frozen", False):
+        base_path = Path(sys._MEIPASS)
+    else:
+        base_path = Path(__file__).resolve().parents[2]
+    return base_path / "assets" / filename
+
+
 class ModernStyle:
     STYLE = """
     * {
@@ -1905,28 +1913,20 @@ class SettingsTab(QWidget):
             }
         """)
 
-        preview_copy = QPushButton(ICO_COPY)
+        preview_copy = QPushButton()
         preview_copy.setObjectName("secondaryBtn")
         preview_copy.setToolTip("Copy preview password")
         preview_copy.setFixedSize(36, 36)
-        preview_copy.setStyleSheet("""
-            QPushButton {
-                font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-                font-size: 16px;
-            }
-        """)
+        preview_copy.setIcon(QIcon(str(get_asset_path("preview_copy.svg"))))
+        preview_copy.setIconSize(QSize(18, 18))
         preview_copy.clicked.connect(self._copy_preview)
 
-        preview_refresh = QPushButton(ICO_REFRESH)
+        preview_refresh = QPushButton()
         preview_refresh.setObjectName("secondaryBtn")
         preview_refresh.setToolTip("Regenerate preview")
         preview_refresh.setFixedSize(36, 36)
-        preview_refresh.setStyleSheet("""
-            QPushButton {
-                font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
-                font-size: 16px;
-            }
-        """)
+        preview_refresh.setIcon(QIcon(str(get_asset_path("preview_refresh.svg"))))
+        preview_refresh.setIconSize(QSize(18, 18))
         preview_refresh.clicked.connect(self._update_preview)
 
         preview_row.addWidget(self.preview_in, 1)
