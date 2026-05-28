@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
     QFrame, QFormLayout, QDialog, QScrollArea, QTextEdit, QSizePolicy,
-    QFileDialog, QProgressBar, QGridLayout, QGroupBox
+    QFileDialog, QProgressBar, QGridLayout, QGroupBox,
+    QSlider, QSpinBox, QCheckBox
 )
 from PySide6.QtCore import Qt, QSize, QTimer, QRegularExpression, QUrl
 from PySide6.QtGui import QIcon, QFont, QColor, QRegularExpressionValidator, QDesktopServices
@@ -756,7 +757,7 @@ class PasswordsTab(QWidget):
         gen = QPushButton(ICO_DICE)
         gen.setObjectName("secondaryBtn")
         gen.setToolTip("Generate random password")
-        gen.clicked.connect(lambda: pwd_in.setText(self.backend.generate_password(16)))
+        gen.clicked.connect(lambda: pwd_in.setText(self.backend.generate_password()))
 
         vis = QPushButton(ICO_VIEW)
         vis.setObjectName("iconBtn")
@@ -827,7 +828,7 @@ class PasswordsTab(QWidget):
         gen = QPushButton(ICO_DICE)
         gen.setObjectName("secondaryBtn")
         gen.setToolTip("Generate random password")
-        gen.clicked.connect(lambda: pwd_in.setText(self.backend.generate_password(16)))
+        gen.clicked.connect(lambda: pwd_in.setText(self.backend.generate_password()))
 
         vis = QPushButton(ICO_VIEW)
         vis.setObjectName("iconBtn")
@@ -1836,7 +1837,129 @@ class SettingsTab(QWidget):
         tlay.addWidget(self.twofa_status)
         tlay.addWidget(self.twofa_enable_btn)
         tlay.addWidget(self.twofa_show_btn)
-        lay.addWidget(twofa_grp)
+        # ── Password Generator ──
+        gen_grp = QGroupBox("Password Generator Preferences")
+        gen_lay = QVBoxLayout(gen_grp)
+        gen_lay.setSpacing(12)
+
+        gen_hint = QLabel("Customize the default options for generating cryptographically secure passwords.")
+        gen_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        gen_hint.setWordWrap(True)
+        gen_lay.addWidget(gen_hint)
+
+        len_row = QHBoxLayout()
+        len_lbl = QLabel("Password Length:")
+        len_lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: white;")
+        
+        self.len_slider = QSlider(Qt.Orientation.Horizontal)
+        self.len_slider.setRange(6, 64)
+        self.len_slider.setSingleStep(1)
+        self.len_slider.setPageStep(4)
+        
+        self.len_spin = QSpinBox()
+        self.len_spin.setRange(6, 64)
+        self.len_spin.setSingleStep(1)
+        self.len_spin.setMinimumHeight(30)
+        self.len_spin.setStyleSheet("QSpinBox { background-color: #1a1a2e; color: white; border: 1px solid #333; border-radius: 4px; padding: 2px 4px; }")
+
+        self.len_slider.valueChanged.connect(self.len_spin.setValue)
+        self.len_spin.valueChanged.connect(self.len_slider.setValue)
+
+        len_row.addWidget(len_lbl)
+        len_row.addWidget(self.len_slider, 1)
+        len_row.addWidget(self.len_spin)
+        gen_lay.addLayout(len_row)
+
+        chk_grid = QGridLayout()
+        chk_grid.setSpacing(10)
+
+        self.chk_upper = QCheckBox("Include Uppercase Letters (A-Z)")
+        self.chk_lower = QCheckBox("Include Lowercase Letters (a-z)")
+        self.chk_digits = QCheckBox("Include Numbers (0-9)")
+        self.chk_symbols = QCheckBox("Include Symbols (!@#$...?)")
+
+        chk_grid.addWidget(self.chk_upper, 0, 0)
+        chk_grid.addWidget(self.chk_lower, 0, 1)
+        chk_grid.addWidget(self.chk_digits, 1, 0)
+        chk_grid.addWidget(self.chk_symbols, 1, 1)
+        gen_lay.addLayout(chk_grid)
+
+        preview_title = QLabel("Live Preview:")
+        preview_title.setStyleSheet("font-size: 12px; color: #a0a0a0; margin-top: 4px;")
+        gen_lay.addWidget(preview_title)
+
+        preview_row = QHBoxLayout()
+        self.preview_in = QLineEdit()
+        self.preview_in.setReadOnly(True)
+        self.preview_in.setMinimumHeight(36)
+        self.preview_in.setStyleSheet("""
+            QLineEdit {
+                background-color: #111122;
+                color: #27ae60;
+                font-family: Consolas, 'Courier New', monospace;
+                font-size: 14px;
+                font-weight: bold;
+                border: 1px solid #27ae6040;
+                border-radius: 6px;
+                padding-left: 8px;
+            }
+        """)
+
+        preview_copy = QPushButton(ICO_COPY)
+        preview_copy.setObjectName("secondaryBtn")
+        preview_copy.setToolTip("Copy preview password")
+        preview_copy.setFixedSize(36, 36)
+        preview_copy.setStyleSheet("""
+            QPushButton {
+                font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+                font-size: 16px;
+            }
+        """)
+        preview_copy.clicked.connect(self._copy_preview)
+
+        preview_refresh = QPushButton(ICO_REFRESH)
+        preview_refresh.setObjectName("secondaryBtn")
+        preview_refresh.setToolTip("Regenerate preview")
+        preview_refresh.setFixedSize(36, 36)
+        preview_refresh.setStyleSheet("""
+            QPushButton {
+                font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+                font-size: 16px;
+            }
+        """)
+        preview_refresh.clicked.connect(self._update_preview)
+
+        preview_row.addWidget(self.preview_in, 1)
+        preview_row.addWidget(preview_refresh)
+        preview_row.addWidget(preview_copy)
+        gen_lay.addLayout(preview_row)
+
+        lay.addWidget(gen_grp)
+
+        # Load initial settings from backend
+        try:
+            length_val = int(self.backend.get_setting('pwd_gen_length', '16'))
+        except ValueError:
+            length_val = 16
+        upper_val = self.backend.get_setting('pwd_gen_include_uppercase', '1') == '1'
+        lower_val = self.backend.get_setting('pwd_gen_include_lowercase', '1') == '1'
+        digits_val = self.backend.get_setting('pwd_gen_include_digits', '1') == '1'
+        symbols_val = self.backend.get_setting('pwd_gen_include_symbols', '1') == '1'
+
+        self.len_slider.setValue(length_val)
+        self.chk_upper.setChecked(upper_val)
+        self.chk_lower.setChecked(lower_val)
+        self.chk_digits.setChecked(digits_val)
+        self.chk_symbols.setChecked(symbols_val)
+
+        # Connect signals
+        self.len_slider.valueChanged.connect(self._save_generator_settings)
+        self.chk_upper.stateChanged.connect(self._save_generator_settings)
+        self.chk_lower.stateChanged.connect(self._save_generator_settings)
+        self.chk_digits.stateChanged.connect(self._save_generator_settings)
+        self.chk_symbols.stateChanged.connect(self._save_generator_settings)
+
+        self._update_preview()
 
         # ── Display Preferences ──
         disp_grp = QGroupBox("Display")
@@ -2251,6 +2374,40 @@ class SettingsTab(QWidget):
             d.exec()
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+
+    def _save_generator_settings(self):
+        # Prevent disabling all checkboxes (ensure at least one character type is enabled)
+        if not (self.chk_upper.isChecked() or self.chk_lower.isChecked() or 
+                self.chk_digits.isChecked() or self.chk_symbols.isChecked()):
+            # Block signals temporarily to prevent infinite recursion
+            self.chk_lower.blockSignals(True)
+            self.chk_lower.setChecked(True)
+            self.chk_lower.blockSignals(False)
+
+        length = self.len_slider.value()
+        try:
+            self.backend.set_setting('pwd_gen_length', str(length))
+            self.backend.set_setting('pwd_gen_include_uppercase', '1' if self.chk_upper.isChecked() else '0')
+            self.backend.set_setting('pwd_gen_include_lowercase', '1' if self.chk_lower.isChecked() else '0')
+            self.backend.set_setting('pwd_gen_include_digits', '1' if self.chk_digits.isChecked() else '0')
+            self.backend.set_setting('pwd_gen_include_symbols', '1' if self.chk_symbols.isChecked() else '0')
+        except Exception as e:
+            print("Failed to save generator settings:", e)
+        
+        self._update_preview()
+
+    def _update_preview(self):
+        try:
+            pwd = self.backend.generate_password()
+            self.preview_in.setText(pwd)
+        except Exception as e:
+            print("Preview generation error:", e)
+
+    def _copy_preview(self):
+        pwd = self.preview_in.text()
+        if pwd:
+            pyperclip.copy(pwd)
+            show_toast(self, "Preview password copied!")
 
 
 # ─── Main Window ──────────────────────────────────────────────────────

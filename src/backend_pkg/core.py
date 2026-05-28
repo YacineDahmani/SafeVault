@@ -137,6 +137,13 @@ class Backend:
             )
         """)
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        
         self.conn.commit()
     
     
@@ -601,10 +608,75 @@ class Backend:
         self.conn.commit()
         return cursor.rowcount > 0
     
-    def generate_password(self, length: int = 16) -> str:
-        """Generate a cryptographically secure random password."""
-        alphabet = string.ascii_letters + string.digits + string.punctuation
-        return ''.join(secrets.choice(alphabet) for _ in range(length))
+    def get_setting(self, key: str, default: str = "") -> str:
+        """Get a setting value from the database."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row[0] if row else default
+
+    def set_setting(self, key: str, value: str):
+        """Set a setting value in the database."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, value)
+        )
+        self.conn.commit()
+
+    def generate_password(self, length: int | None = None, include_upper: bool | None = None, include_lower: bool | None = None, include_digits: bool | None = None, include_symbols: bool | None = None) -> str:
+        """Generate a cryptographically secure random password using stored settings or custom overrides."""
+        # 1. Load settings from database, fallback to defaults if not found
+        if length is None:
+            try:
+                length = int(self.get_setting('pwd_gen_length', '16'))
+            except ValueError:
+                length = 16
+        if include_upper is None:
+            include_upper = self.get_setting('pwd_gen_include_uppercase', '1') == '1'
+        if include_lower is None:
+            include_lower = self.get_setting('pwd_gen_include_lowercase', '1') == '1'
+        if include_digits is None:
+            include_digits = self.get_setting('pwd_gen_include_digits', '1') == '1'
+        if include_symbols is None:
+            include_symbols = self.get_setting('pwd_gen_include_symbols', '1') == '1'
+
+        # 2. Build character pools and guaranteed elements
+        pools = []
+        guaranteed = []
+        
+        if include_upper:
+            pools.append(string.ascii_uppercase)
+            guaranteed.append(secrets.choice(string.ascii_uppercase))
+        if include_lower:
+            pools.append(string.ascii_lowercase)
+            guaranteed.append(secrets.choice(string.ascii_lowercase))
+        if include_digits:
+            pools.append(string.digits)
+            guaranteed.append(secrets.choice(string.digits))
+        if include_symbols:
+            pools.append(string.punctuation)
+            guaranteed.append(secrets.choice(string.punctuation))
+
+        if not pools:
+            # Fallback if everything is disabled
+            pools.append(string.ascii_letters + string.digits)
+            guaranteed.append(secrets.choice(string.ascii_letters + string.digits))
+
+        pool = "".join(pools)
+        
+        # Fill the rest of the password
+        remaining_len = length - len(guaranteed)
+        if remaining_len > 0:
+            for _ in range(remaining_len):
+                guaranteed.append(secrets.choice(pool))
+        else:
+            # If requested length is shorter than the number of guaranteed characters
+            guaranteed = guaranteed[:length]
+
+        # Shuffle to not expose the structure
+        secrets.SystemRandom().shuffle(guaranteed)
+        return "".join(guaranteed)
 
     
     COMMON_PASSWORD_HASHES = {
