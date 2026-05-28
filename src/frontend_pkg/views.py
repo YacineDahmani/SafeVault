@@ -259,11 +259,16 @@ class TwoFactorVerifyDialog(QDialog):
     def __init__(self, backend, parent=None):
         super().__init__(parent)
         self.backend = backend
+        self.setWindowFlags(
+            self.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         self._build()
 
     def _build(self):
         self.setWindowTitle("Two-Factor Authentication")
-        self.setMinimumWidth(360)
+        self.setMinimumSize(360, 200)
         lay = QVBoxLayout(self)
         lay.setSpacing(12)
 
@@ -313,11 +318,16 @@ class TwoFactorSetupDialog(QDialog):
         self.secret = secret
         self.otpauth_uri = otpauth_uri
         self.confirm_required = confirm_required
+        self.setWindowFlags(
+            self.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         self._build()
 
     def _build(self):
         self.setWindowTitle("Enable Two-Factor Authentication")
-        self.setMinimumWidth(460)
+        self.setMinimumSize(460, 520)
         lay = QVBoxLayout(self)
         lay.setSpacing(10)
 
@@ -724,7 +734,12 @@ class PasswordsTab(QWidget):
     def _add_dialog(self):
         d = QDialog(self)
         d.setWindowTitle("Add Password")
-        d.setMinimumWidth(420)
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
+        d.setMinimumSize(420, 260)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
         QLabel("New Password Entry").setParent(d)
@@ -790,7 +805,12 @@ class PasswordsTab(QWidget):
 
         d = QDialog(self)
         d.setWindowTitle("Edit Password")
-        d.setMinimumWidth(420)
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
+        d.setMinimumSize(420, 260)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
 
@@ -955,7 +975,12 @@ class CardsTab(QWidget):
 
         d = QDialog(self)
         d.setWindowTitle(f"Card: {c['label']}")
-        d.setMinimumWidth(440)
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
+        d.setMinimumSize(440, 320)
         lay = QVBoxLayout(d)
         lay.setSpacing(12)
 
@@ -1012,7 +1037,12 @@ class CardsTab(QWidget):
     def _add_dialog(self):
         d = QDialog(self)
         d.setWindowTitle("Add Credit Card")
-        d.setMinimumWidth(420)
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
+        d.setMinimumSize(420, 360)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
 
@@ -1098,7 +1128,12 @@ class CardsTab(QWidget):
 
         d = QDialog(self)
         d.setWindowTitle("Edit Card")
-        d.setMinimumWidth(440)
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
+        d.setMinimumSize(440, 380)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
 
@@ -1277,6 +1312,11 @@ class EnvFilesTab(QWidget):
 
         d = QDialog(self)
         d.setWindowTitle(f".env: {env_entry['label']}")
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         d.setMinimumSize(620, 450)
         lay = QVBoxLayout(d)
         lay.setSpacing(12)
@@ -1327,6 +1367,11 @@ class EnvFilesTab(QWidget):
     def _add_dialog(self):
         d = QDialog(self)
         d.setWindowTitle("Add .env File")
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         d.setMinimumSize(620, 450)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
@@ -1384,6 +1429,11 @@ class EnvFilesTab(QWidget):
 
         d = QDialog(self)
         d.setWindowTitle("Edit .env File")
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         d.setMinimumSize(620, 450)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
@@ -1529,6 +1579,11 @@ class NotesTab(QWidget):
             n = self.backend.get_note_content(nid)
             d = QDialog(self)
             d.setWindowTitle(f"Note: {n['title']}")
+            d.setWindowFlags(
+                d.windowFlags() |
+                Qt.WindowType.WindowMinimizeButtonHint |
+                Qt.WindowType.WindowMaximizeButtonHint
+            )
             d.setMinimumSize(500, 400)
             lay = QVBoxLayout(d)
             t = QLabel(n['title'])
@@ -1556,6 +1611,11 @@ class NotesTab(QWidget):
     def _add_dialog(self):
         d = QDialog(self)
         d.setWindowTitle("Add Secret Note")
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         d.setMinimumSize(500, 400)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
@@ -1599,6 +1659,11 @@ class NotesTab(QWidget):
 
         d = QDialog(self)
         d.setWindowTitle("Edit Secret Note")
+        d.setWindowFlags(
+            d.windowFlags() |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         d.setMinimumSize(500, 400)
         lay = QVBoxLayout(d)
         lay.setSpacing(15)
@@ -2195,7 +2260,7 @@ class MainWindow(QMainWindow):
         self.backend = backend
         self.setWindowIcon(QIcon(str(get_app_icon_path())))
         self.setWindowTitle(f"SafeVault v{self.backend.VERSION}")
-        self.setMinimumSize(1000, 700)
+        self.setMinimumSize(750, 500)
         self.setStyleSheet(ModernStyle.STYLE)
 
         self.stack = QStackedWidget()
