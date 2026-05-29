@@ -1759,7 +1759,7 @@ class SettingsTab(QWidget):
         self.sidebar.setFixedWidth(200)
         self.sidebar.setStyleSheet("""
             QListWidget#settingsSidebar {
-                background-color: #1a1a2e;
+                background-color: #121212;
                 border: 1px solid #333333;
                 border-radius: 8px;
                 outline: 0;
@@ -1774,21 +1774,25 @@ class SettingsTab(QWidget):
                 margin-bottom: 4px;
             }
             QListWidget#settingsSidebar::item:hover {
-                background-color: #2b2b2b;
+                background-color: #1e1e1e;
                 color: #ffffff;
             }
             QListWidget#settingsSidebar::item:selected {
-                background-color: #0078D4;
+                background-color: #1e1e1e;
                 color: #ffffff;
+                border-left: 4px solid #0078D4;
+                border-top-left-radius: 0px;
+                border-bottom-left-radius: 0px;
             }
         """)
 
-        # Add sidebar items
+        # Add sidebar items using MDL2 icons instead of emojis
         items = [
-            (" ⚙️  General Settings", 0),
-            (" 🔒  Security & 2FA", 1),
-            (" ⚡  Password Generator", 2),
-            (" 🛠️  Tools & Diagnostics", 3)
+            (f"{ICO_SETTINGS}  General Settings", 0),
+            (f"{ICO_KEY}  Security & 2FA", 1),
+            (f"{ICO_DICE}  Password Generator", 2),
+            (f"{ICO_SAVE}  Backup & Restore", 3),
+            (f"{ICO_SEARCH}  Tools & Diagnostics", 4)
         ]
         for text, index in items:
             self.sidebar.addItem(text)
@@ -1806,6 +1810,7 @@ class SettingsTab(QWidget):
         self._build_general_page()
         self._build_security_page()
         self._build_generator_page()
+        self._build_backup_page()
         self._build_tools_page()
 
         # Select first page by default
@@ -1854,7 +1859,7 @@ class SettingsTab(QWidget):
     def _build_general_page(self):
         scroll, container, lay = self._create_scrollable_page()
 
-        title = QLabel("⚙️  General Settings")
+        title = QLabel(f"{ICO_SETTINGS}  General Settings")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
@@ -1997,7 +2002,7 @@ class SettingsTab(QWidget):
     def _build_security_page(self):
         scroll, container, lay = self._create_scrollable_page()
 
-        title = QLabel("🔒  Security & Two-Factor Authentication")
+        title = QLabel(f"{ICO_KEY}  Security & Two-Factor Authentication")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
@@ -2030,7 +2035,7 @@ class SettingsTab(QWidget):
     def _build_generator_page(self):
         scroll, container, lay = self._create_scrollable_page()
 
-        title = QLabel("⚡  Password Generator Preferences")
+        title = QLabel(f"{ICO_DICE}  Password Generator Preferences")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
@@ -2128,10 +2133,60 @@ class SettingsTab(QWidget):
 
         self.pages.addWidget(scroll)
 
+    def _build_backup_page(self):
+        scroll, container, lay = self._create_scrollable_page()
+
+        title = QLabel(f"{ICO_SAVE}  Backup & Restore")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
+        lay.addWidget(title)
+
+        # ── Backup & Restore ──
+        backup_grp = QGroupBox("Backup & Restore")
+        blay = QVBoxLayout(backup_grp)
+        blay.setSpacing(10)
+
+        brow = QHBoxLayout()
+        backup_btn = QPushButton(f"{ICO_SAVE}  Backup Vault")
+        backup_btn.setMinimumHeight(40)
+        backup_btn.clicked.connect(self._backup)
+
+        restore_btn = QPushButton(f"{ICO_REFRESH}  Restore Vault")
+        restore_btn.setObjectName("secondaryBtn")
+        restore_btn.setMinimumHeight(40)
+        restore_btn.clicked.connect(self._restore)
+
+        brow.addWidget(backup_btn)
+        brow.addWidget(restore_btn)
+        blay.addLayout(brow)
+        lay.addWidget(backup_grp)
+
+        # ── Import / Export ──
+        ie_grp = QGroupBox("Import / Export")
+        ielay = QVBoxLayout(ie_grp)
+        ielay.setSpacing(10)
+
+        ierow = QHBoxLayout()
+        export_btn = QPushButton(f"{ICO_UPLOAD}  Export as JSON")
+        export_btn.setMinimumHeight(40)
+        export_btn.clicked.connect(self._export_json)
+
+        export_enc_btn = QPushButton(f"{ICO_HIDE}  Export Encrypted Report")
+        export_enc_btn.setObjectName("secondaryBtn")
+        export_enc_btn.setMinimumHeight(40)
+        export_enc_btn.clicked.connect(self._export_encrypted)
+
+        ierow.addWidget(export_btn)
+        ierow.addWidget(export_enc_btn)
+        ielay.addLayout(ierow)
+        lay.addWidget(ie_grp)
+
+        lay.addStretch()
+        self.pages.addWidget(scroll)
+
     def _build_tools_page(self):
         scroll, container, lay = self._create_scrollable_page()
 
-        title = QLabel("🛠️  Tools & Diagnostics")
+        title = QLabel(f"{ICO_SEARCH}  Tools & Diagnostics")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
@@ -2196,46 +2251,7 @@ class SettingsTab(QWidget):
         hlay.addWidget(self.scan_result)
         lay.addWidget(health_grp)
 
-        # ── Backup & Restore ──
-        backup_grp = QGroupBox("Backup & Restore")
-        blay = QVBoxLayout(backup_grp)
-        blay.setSpacing(10)
-
-        brow = QHBoxLayout()
-        backup_btn = QPushButton(f"{ICO_SAVE}  Backup Vault")
-        backup_btn.setMinimumHeight(40)
-        backup_btn.clicked.connect(self._backup)
-
-        restore_btn = QPushButton(f"{ICO_REFRESH}  Restore Vault")
-        restore_btn.setObjectName("secondaryBtn")
-        restore_btn.setMinimumHeight(40)
-        restore_btn.clicked.connect(self._restore)
-
-        brow.addWidget(backup_btn)
-        brow.addWidget(restore_btn)
-        blay.addLayout(brow)
-        lay.addWidget(backup_grp)
-
-        # ── Import / Export ──
-        ie_grp = QGroupBox("Import / Export")
-        ielay = QVBoxLayout(ie_grp)
-        ielay.setSpacing(10)
-
-        ierow = QHBoxLayout()
-        export_btn = QPushButton(f"{ICO_UPLOAD}  Export as JSON")
-        export_btn.setMinimumHeight(40)
-        export_btn.clicked.connect(self._export_json)
-
-        export_enc_btn = QPushButton(f"{ICO_HIDE}  Export Encrypted Report")
-        export_enc_btn.setObjectName("secondaryBtn")
-        export_enc_btn.setMinimumHeight(40)
-        export_enc_btn.clicked.connect(self._export_encrypted)
-
-        ierow.addWidget(export_btn)
-        ierow.addWidget(export_enc_btn)
-        ielay.addLayout(ierow)
-        lay.addWidget(ie_grp)
-
+        lay.addStretch()
         self.pages.addWidget(scroll)
 
     def _toggle_analyzer_visibility(self):
