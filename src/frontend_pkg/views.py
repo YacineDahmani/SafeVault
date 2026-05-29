@@ -2096,7 +2096,7 @@ class SettingsTab(QWidget):
         self.preview_in.setMinimumHeight(36)
         self.preview_in.setStyleSheet("""
             QLineEdit {
-                background-color: #111122;
+                background-color: #121212;
                 color: #27ae60;
                 font-family: Consolas, 'Courier New', monospace;
                 font-size: 14px;
