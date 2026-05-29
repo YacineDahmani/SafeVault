@@ -6,17 +6,40 @@ import json
 import sys
 from pathlib import Path
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
     QFrame, QFormLayout, QDialog, QScrollArea, QTextEdit, QSizePolicy,
     QFileDialog, QProgressBar, QGridLayout, QGroupBox,
-    QSlider, QSpinBox, QCheckBox
+    QSlider, QSpinBox, QCheckBox, QListWidget, QComboBox
 )
-from PySide6.QtCore import Qt, QSize, QTimer, QRegularExpression, QUrl
+from PySide6.QtCore import Qt, QSize, QTimer, QRegularExpression, QUrl, QEvent
 from PySide6.QtGui import QIcon, QFont, QColor, QRegularExpressionValidator, QDesktopServices
 
 import pyperclip
+
+
+def get_main_window(widget):
+    win = widget.window()
+    if win and hasattr(win, "copy_to_clipboard"):
+        return win
+    # Fallback to traversing parents
+    curr = widget
+    while curr:
+        if hasattr(curr, "copy_to_clipboard"):
+            return curr
+        curr = curr.parent()
+    return None
+
+
+def safe_copy(widget, text, success_msg):
+    main_win = get_main_window(widget)
+    if main_win:
+        main_win.copy_to_clipboard(text, success_msg)
+    else:
+        pyperclip.copy(text)
+        show_toast(widget.window(), success_msg)
+
 
 
 ICO_COPY   = "\uE16F"   # copy
@@ -353,7 +376,7 @@ class TwoFactorSetupDialog(QDialog):
 
         copy_key = QPushButton("Copy Setup Key")
         copy_key.setObjectName("secondaryBtn")
-        copy_key.clicked.connect(lambda: (pyperclip.copy(self.secret), show_toast(self, "Setup key copied!")))
+        copy_key.clicked.connect(lambda: safe_copy(self, self.secret, "Setup key copied!"))
 
         uri_lbl = QLabel("otpauth URI (optional):")
         uri_lbl.setStyleSheet("color: #a0a0a0; font-size: 12px;")
@@ -362,7 +385,7 @@ class TwoFactorSetupDialog(QDialog):
 
         copy_uri = QPushButton("Copy otpauth URI")
         copy_uri.setObjectName("secondaryBtn")
-        copy_uri.clicked.connect(lambda: (pyperclip.copy(self.otpauth_uri), show_toast(self, "URI copied!")))
+        copy_uri.clicked.connect(lambda: safe_copy(self, self.otpauth_uri, "URI copied!"))
 
         code_lbl = QLabel("Enter a 6-digit code to confirm:")
         code_lbl.setStyleSheet("color: #a0a0a0; font-size: 12px;")
@@ -648,11 +671,20 @@ class PasswordsTab(QWidget):
             entries = (self.backend.search_vault(q)['passwords'] if q
                        else self.backend.get_all_passwords())
             self.table.setRowCount(len(entries))
+            show_passwords_in_list = self.backend.get_setting('show_passwords_in_list', '0') == '1'
             for i, p in enumerate(entries):
                 item0 = QTableWidgetItem(p['app_name'])
                 item0.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(i, 0, item0)
-                item1 = QTableWidgetItem(p['username'])
+                
+                username_display = p['username']
+                if show_passwords_in_list:
+                    try:
+                        pwd_text = self.backend.get_password(p['id'])
+                        username_display = f"{p['username']} \u2502 {pwd_text}"
+                    except Exception:
+                        pass
+                item1 = QTableWidgetItem(username_display)
                 item1.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(i, 1, item1)
                 self.table.setItem(i, 3, QTableWidgetItem(str(p['id'])))
@@ -670,9 +702,13 @@ class PasswordsTab(QWidget):
                 b_copy.clicked.connect(lambda _, pid=p['id']: self._copy(pid))
                 b_copy.setFixedSize(32, 32)
 
-                b_show = QPushButton(ICO_VIEW)
+                if show_passwords_in_list:
+                    b_show = QPushButton(ICO_HIDE)
+                    b_show.setToolTip("Hide password")
+                else:
+                    b_show = QPushButton(ICO_VIEW)
+                    b_show.setToolTip("Show / hide password")
                 b_show.setObjectName("iconBtn")
-                b_show.setToolTip("Show / hide password")
                 b_show.setCursor(Qt.CursorShape.PointingHandCursor)
                 b_show.clicked.connect(lambda _, pid=p['id'], btn=b_show, row=i: self._toggle_show(pid, btn, row))
                 b_show.setFixedSize(32, 32)
@@ -702,8 +738,7 @@ class PasswordsTab(QWidget):
 
     def _copy(self, pid):
         try:
-            pyperclip.copy(self.backend.get_password(pid))
-            show_toast(self, "Password copied!")
+            safe_copy(self, self.backend.get_password(pid), "Password copied!")
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
@@ -1018,10 +1053,7 @@ class CardsTab(QWidget):
             cp.setObjectName("iconBtn")
             cp.setToolTip(f"Copy {label}")
             cp.setCursor(Qt.CursorShape.PointingHandCursor)
-            cp.clicked.connect(lambda _, v=value, l=label: (
-                pyperclip.copy(v),
-                show_toast(self, f"{l} copied!")
-            ))
+            cp.clicked.connect(lambda _, v=value, l=label: safe_copy(self, v, f"{l} copied!"))
             cp.setFixedSize(32, 32)
 
             row.addWidget(lbl)
@@ -1342,7 +1374,7 @@ class EnvFilesTab(QWidget):
         btns = QHBoxLayout()
         copy_btn = QPushButton(f"{ICO_COPY}  Copy All")
         copy_btn.setObjectName("secondaryBtn")
-        copy_btn.clicked.connect(lambda: (pyperclip.copy(env_entry['content']), show_toast(self, ".env content copied!")))
+        copy_btn.clicked.connect(lambda: safe_copy(self, env_entry['content'], ".env content copied!"))
 
         close = QPushButton("Close")
         close.clicked.connect(d.accept)
@@ -2424,6 +2456,17 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.stack)
         self._setup_screens()
 
+        # Timers setup
+        self.auto_lock_timer = QTimer(self)
+        self.auto_lock_timer.timeout.connect(self._auto_lock_triggered)
+        
+        self.clipboard_timer = QTimer(self)
+        self.clipboard_timer.timeout.connect(self._clear_clipboard)
+        self.clipboard_copied_text = ""
+
+        # Install event filter to track user activity
+        QApplication.instance().installEventFilter(self)
+
     def _setup_screens(self):
         self.login_w = LoginWidget(self.backend, self._on_login)
         self.setup_w = SetupWidget(self.backend, self._on_login)
@@ -2490,6 +2533,7 @@ class MainWindow(QMainWindow):
         
         self.stack.setCurrentWidget(self.vault_w)
         self._refresh_all()
+        self.reset_auto_lock_timer()
 
     def lock_vault(self):
         self.backend._encryption_key = None
@@ -2498,6 +2542,85 @@ class MainWindow(QMainWindow):
             self.vault_w.deleteLater()
             self.vault_w = None
         self.stack.setCurrentWidget(self.login_w)
+        if hasattr(self, 'auto_lock_timer'):
+            self.auto_lock_timer.stop()
+        if hasattr(self, 'clipboard_timer'):
+            self.clipboard_timer.stop()
+
+    def eventFilter(self, obj, event):
+        # Reset timer on user interaction if logged in
+        if getattr(self, 'vault_w', None) is not None:
+            if event.type() in (QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress, QEvent.Type.Wheel):
+                self.reset_auto_lock_timer()
+        return super().eventFilter(obj, event)
+
+    def reset_auto_lock_timer(self):
+        if not hasattr(self, 'auto_lock_timer'):
+            return
+        
+        # Don't run timer if not logged in
+        if getattr(self, 'vault_w', None) is None:
+            self.auto_lock_timer.stop()
+            return
+            
+        timeout_str = self.backend.get_setting('auto_lock_timeout', '15')  # default 15 minutes
+        if timeout_str == 'never':
+            self.auto_lock_timer.stop()
+            return
+            
+        try:
+            minutes = int(timeout_str)
+        except ValueError:
+            minutes = 15
+            
+        if minutes <= 0:
+            self.auto_lock_timer.stop()
+            return
+            
+        # Set timer in milliseconds
+        self.auto_lock_timer.start(minutes * 60 * 1000)
+
+    def _auto_lock_triggered(self):
+        if getattr(self, 'vault_w', None) is not None:
+            self.lock_vault()
+            show_toast(self, "Vault auto-locked due to inactivity.")
+
+    def copy_to_clipboard(self, text, message="Copied to clipboard!"):
+        pyperclip.copy(text)
+        show_toast(self, message)
+        
+        # Check clipboard clear timeout setting
+        timeout_str = self.backend.get_setting('clear_clipboard_timeout', '30') # default 30 seconds
+        if timeout_str == 'never':
+            if hasattr(self, 'clipboard_timer'):
+                self.clipboard_timer.stop()
+            return
+            
+        try:
+            seconds = int(timeout_str)
+        except ValueError:
+            seconds = 30
+            
+        if seconds <= 0:
+            return
+            
+        self.clipboard_copied_text = text
+        self.clipboard_timer.start(seconds * 1000)
+
+        # Check minimize on copy setting
+        minimize_on_copy = self.backend.get_setting('minimize_on_copy', '0') == '1'
+        if minimize_on_copy:
+            self.showMinimized()
+
+    def _clear_clipboard(self):
+        self.clipboard_timer.stop()
+        try:
+            current_clipboard = pyperclip.paste()
+            if current_clipboard == getattr(self, 'clipboard_copied_text', ''):
+                pyperclip.copy('')
+                show_toast(self, "Clipboard cleared for security.")
+        except Exception as e:
+            print("Failed to clear clipboard:", e)
 
     def _on_tab_changed(self, index):
         active_tab = self.tabs.widget(index)
