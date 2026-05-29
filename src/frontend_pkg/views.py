@@ -1748,122 +1748,266 @@ class SettingsTab(QWidget):
         self._build()
 
     def _build(self):
+        # We want a horizontal layout for master-detail
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(15)
+
+        # ─── Sidebar List ───
+        self.sidebar = QListWidget()
+        self.sidebar.setObjectName("settingsSidebar")
+        self.sidebar.setFixedWidth(200)
+        self.sidebar.setStyleSheet("""
+            QListWidget#settingsSidebar {
+                background-color: #1a1a2e;
+                border: 1px solid #333333;
+                border-radius: 8px;
+                outline: 0;
+                padding: 5px;
+            }
+            QListWidget#settingsSidebar::item {
+                padding: 12px 15px;
+                border-radius: 6px;
+                color: #a0a0a0;
+                font-weight: bold;
+                font-size: 13px;
+                margin-bottom: 4px;
+            }
+            QListWidget#settingsSidebar::item:hover {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QListWidget#settingsSidebar::item:selected {
+                background-color: #0078D4;
+                color: #ffffff;
+            }
+        """)
+
+        # Add sidebar items
+        items = [
+            (" ⚙️  General Settings", 0),
+            (" 🔒  Security & 2FA", 1),
+            (" ⚡  Password Generator", 2),
+            (" 🛠️  Tools & Diagnostics", 3)
+        ]
+        for text, index in items:
+            self.sidebar.addItem(text)
+
+        layout.addWidget(self.sidebar)
+
+        # ─── Right Pane: Stacked Widget ───
+        self.pages = QStackedWidget()
+        layout.addWidget(self.pages, 1)
+
+        # Connect sidebar selection to change pages
+        self.sidebar.currentRowChanged.connect(self.pages.setCurrentIndex)
+
+        # Build pages
+        self._build_general_page()
+        self._build_security_page()
+        self._build_generator_page()
+        self._build_tools_page()
+
+        # Select first page by default
+        self.sidebar.setCurrentRow(0)
+
+        # Load initial generator values
+        try:
+            length_val = int(self.backend.get_setting('pwd_gen_length', '16'))
+        except ValueError:
+            length_val = 16
+        upper_val = self.backend.get_setting('pwd_gen_include_uppercase', '1') == '1'
+        lower_val = self.backend.get_setting('pwd_gen_include_lowercase', '1') == '1'
+        digits_val = self.backend.get_setting('pwd_gen_include_digits', '1') == '1'
+        symbols_val = self.backend.get_setting('pwd_gen_include_symbols', '1') == '1'
+
+        self.len_slider.setValue(length_val)
+        self.chk_upper.setChecked(upper_val)
+        self.chk_lower.setChecked(lower_val)
+        self.chk_digits.setChecked(digits_val)
+        self.chk_symbols.setChecked(symbols_val)
+
+        # Connect generator signals
+        self.len_slider.valueChanged.connect(self._save_generator_settings)
+        self.chk_upper.stateChanged.connect(self._save_generator_settings)
+        self.chk_lower.stateChanged.connect(self._save_generator_settings)
+        self.chk_digits.stateChanged.connect(self._save_generator_settings)
+        self.chk_symbols.stateChanged.connect(self._save_generator_settings)
+
+        self._update_preview()
+        self._refresh_2fa_ui()
+
+    def _create_scrollable_page(self):
+        """Helper to create a scroll area containing a widget for a stacked page."""
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-
-        content = QWidget()
-        lay = QVBoxLayout(content)
+        
+        container = QWidget()
+        lay = QVBoxLayout(container)
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(20)
+        
+        scroll.setWidget(container)
+        return scroll, container, lay
 
-        title = QLabel(f"{ICO_SETTINGS}  Settings & Tools")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: white;")
+    def _build_general_page(self):
+        scroll, container, lay = self._create_scrollable_page()
+
+        title = QLabel("⚙️  General Settings")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
         lay.addWidget(title)
 
-        # ── Manual Password Analyzer ──
-        analyzer_grp = QGroupBox("Password Analyzer")
-        alay = QVBoxLayout(analyzer_grp)
+        # ── Group: Behavior Settings ──
+        pref_grp = QGroupBox("App Preferences & Behavior")
+        play = QVBoxLayout(pref_grp)
+        play.setSpacing(15)
 
-        analyzer_hint = QLabel("Check a password before saving it. The password stays local and is never exported.")
-        analyzer_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
-        analyzer_hint.setWordWrap(True)
+        # Auto-Lock Selector
+        lock_row = QHBoxLayout()
+        lock_lbl = QLabel("Vault Auto-Lock Timeout:")
+        lock_lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: white; min-width: 180px;")
+        self.auto_lock_combo = QComboBox()
+        self.auto_lock_combo.addItems([
+            "1 Minute",
+            "5 Minutes",
+            "15 Minutes",
+            "30 Minutes",
+            "Never"
+        ])
+        self.auto_lock_combo.setMinimumHeight(32)
+        self.auto_lock_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #1e1e1e;
+                border: 1px solid #333;
+                border-radius: 4px;
+                padding: 4px 10px;
+                color: white;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+        """)
+        lock_row.addWidget(lock_lbl)
+        lock_row.addWidget(self.auto_lock_combo, 1)
+        play.addLayout(lock_row)
 
-        analyzer_row = QHBoxLayout()
-        self.analyzer_input = QLineEdit()
-        self.analyzer_input.setPlaceholderText("Type a password to analyze")
-        self.analyzer_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.analyzer_input.setMinimumHeight(36)
+        # Clipboard Selector
+        clip_row = QHBoxLayout()
+        clip_lbl = QLabel("Clear Clipboard Timeout:")
+        clip_lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: white; min-width: 180px;")
+        self.clear_clipboard_combo = QComboBox()
+        self.clear_clipboard_combo.addItems([
+            "15 Seconds",
+            "30 Seconds",
+            "1 Minute",
+            "2 Minutes",
+            "Never"
+        ])
+        self.clear_clipboard_combo.setMinimumHeight(32)
+        self.clear_clipboard_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #1e1e1e;
+                border: 1px solid #333;
+                border-radius: 4px;
+                padding: 4px 10px;
+                color: white;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+        """)
+        clip_row.addWidget(clip_lbl)
+        clip_row.addWidget(self.clear_clipboard_combo, 1)
+        play.addLayout(clip_row)
 
-        self.analyzer_toggle = QPushButton(ICO_VIEW)
-        self.analyzer_toggle.setObjectName("iconBtn")
-        self.analyzer_toggle.setToolTip("Show password")
-        self.analyzer_toggle.clicked.connect(self._toggle_analyzer_visibility)
+        # Minimize on Copy Checkbox
+        self.minimize_on_copy_chk = QCheckBox("Minimize SafeVault window after copying credentials")
+        self.minimize_on_copy_chk.setStyleSheet("font-size: 13px; color: #e0e0e0;")
+        play.addWidget(self.minimize_on_copy_chk)
 
-        analyze_btn = QPushButton(f"{ICO_SEARCH}  Analyze")
-        analyze_btn.setMinimumHeight(36)
-        analyze_btn.clicked.connect(self._analyze_custom_password)
+        # Show passwords in list Checkbox
+        self.show_passwords_chk = QCheckBox("Always show passwords in list view by default")
+        self.show_passwords_chk.setStyleSheet("font-size: 13px; color: #e0e0e0;")
+        play.addWidget(self.show_passwords_chk)
 
-        analyzer_row.addWidget(self.analyzer_input, 1)
-        analyzer_row.addWidget(self.analyzer_toggle)
-        analyzer_row.addWidget(analyze_btn)
+        lay.addWidget(pref_grp)
 
-        self.analyzer_score = QLabel("No analysis yet.")
-        self.analyzer_score.setStyleSheet("font-size: 13px; color: #a0a0a0;")
-        self.analyzer_feedback = QLabel("")
-        self.analyzer_feedback.setStyleSheet("font-size: 12px; color: #d0d0d0;")
-        self.analyzer_feedback.setWordWrap(True)
+        # Footer Credit
+        credit = QLabel('Built by YacineDahmani • <a href="https://github.com/YacineDahmani">github.com/YacineDahmani</a>')
+        credit.setStyleSheet("font-size: 11px; color: #8f8f8f; padding-top: 15px;")
+        credit.setOpenExternalLinks(False)
+        credit.linkActivated.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
+        lay.addWidget(credit, alignment=Qt.AlignmentFlag.AlignRight)
 
-        alay.addWidget(analyzer_hint)
-        alay.addLayout(analyzer_row)
-        alay.addWidget(self.analyzer_score)
-        alay.addWidget(self.analyzer_feedback)
-        lay.addWidget(analyzer_grp)
+        lay.addStretch()
+        self.pages.addWidget(scroll)
 
-        # ── Password Health ──
-        health_grp = QGroupBox("Password Health Check")
-        hlay = QVBoxLayout(health_grp)
+        # Load values and connect signals
+        lock_val = self.backend.get_setting('auto_lock_timeout', '15')
+        lock_index = {"1": 0, "5": 1, "15": 2, "30": 3, "never": 4}.get(lock_val, 2)
+        self.auto_lock_combo.setCurrentIndex(lock_index)
+        
+        clip_val = self.backend.get_setting('clear_clipboard_timeout', '30')
+        clip_index = {"15": 0, "30": 1, "60": 2, "120": 3, "never": 4}.get(clip_val, 1)
+        self.clear_clipboard_combo.setCurrentIndex(clip_index)
+        
+        min_val = self.backend.get_setting('minimize_on_copy', '0') == '1'
+        self.minimize_on_copy_chk.setChecked(min_val)
+        
+        show_val = self.backend.get_setting('show_passwords_in_list', '0') == '1'
+        self.show_passwords_chk.setChecked(show_val)
 
-        health_hint = QLabel("Runs a full scan for weak, reused, and commonly breached passwords.")
-        health_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
-        health_hint.setWordWrap(True)
+        # Connect signals
+        self.auto_lock_combo.currentIndexChanged.connect(self._save_general_settings)
+        self.clear_clipboard_combo.currentIndexChanged.connect(self._save_general_settings)
+        self.minimize_on_copy_chk.stateChanged.connect(self._save_general_settings)
+        self.show_passwords_chk.stateChanged.connect(self._save_general_settings)
 
-        scan_btn = QPushButton(f"{ICO_SEARCH}  Run Security Scan")
-        scan_btn.setMinimumHeight(40)
-        scan_btn.clicked.connect(self._run_scan)
-        hlay.addWidget(health_hint)
-        hlay.addWidget(scan_btn)
+    def _save_general_settings(self):
+        try:
+            # Auto lock timeout
+            lock_map = {0: "1", 1: "5", 2: "15", 3: "30", 4: "never"}
+            lock_val = lock_map.get(self.auto_lock_combo.currentIndex(), "15")
+            self.backend.set_setting('auto_lock_timeout', lock_val)
+            
+            # Reset timer
+            self.main_window.reset_auto_lock_timer()
+            
+            # Clear clipboard timeout
+            clip_map = {0: "15", 1: "30", 2: "60", 3: "120", 4: "never"}
+            clip_val = clip_map.get(self.clear_clipboard_combo.currentIndex(), "30")
+            self.backend.set_setting('clear_clipboard_timeout', clip_val)
+            
+            # Minimize on copy
+            min_val = "1" if self.minimize_on_copy_chk.isChecked() else "0"
+            self.backend.set_setting('minimize_on_copy', min_val)
+            
+            # Show passwords in list
+            show_val = "1" if self.show_passwords_chk.isChecked() else "0"
+            self.backend.set_setting('show_passwords_in_list', show_val)
+            
+            # Tell PasswordsTab to refresh
+            if hasattr(self.main_window, 'pw_tab'):
+                self.main_window.pw_tab.load_data()
+                
+        except Exception as e:
+            print("Failed to save general settings:", e)
 
-        self.scan_result = QWidget()
-        self.scan_result_lay = QVBoxLayout(self.scan_result)
-        self.scan_result_lay.setContentsMargins(0, 0, 0, 0)
-        hlay.addWidget(self.scan_result)
-        lay.addWidget(health_grp)
+    def _build_security_page(self):
+        scroll, container, lay = self._create_scrollable_page()
 
-        # ── Backup & Restore ──
-        backup_grp = QGroupBox("Backup & Restore")
-        blay = QVBoxLayout(backup_grp)
+        title = QLabel("🔒  Security & Two-Factor Authentication")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
+        lay.addWidget(title)
 
-        brow = QHBoxLayout()
-        backup_btn = QPushButton(f"{ICO_SAVE}  Backup Vault")
-        backup_btn.setMinimumHeight(40)
-        backup_btn.clicked.connect(self._backup)
-
-        restore_btn = QPushButton(f"{ICO_REFRESH}  Restore Vault")
-        restore_btn.setObjectName("secondaryBtn")
-        restore_btn.setMinimumHeight(40)
-        restore_btn.clicked.connect(self._restore)
-
-        brow.addWidget(backup_btn)
-        brow.addWidget(restore_btn)
-        blay.addLayout(brow)
-        lay.addWidget(backup_grp)
-
-        # ── Import / Export ──
-        ie_grp = QGroupBox("Import / Export")
-        ielay = QVBoxLayout(ie_grp)
-
-        ierow = QHBoxLayout()
-        export_btn = QPushButton(f"{ICO_UPLOAD}  Export as JSON")
-        export_btn.setMinimumHeight(40)
-        export_btn.clicked.connect(self._export_json)
-
-        export_enc_btn = QPushButton(f"{ICO_HIDE}  Export Encrypted Report")
-        export_enc_btn.setObjectName("secondaryBtn")
-        export_enc_btn.setMinimumHeight(40)
-        export_enc_btn.clicked.connect(self._export_encrypted)
-
-        ierow.addWidget(export_btn)
-        ierow.addWidget(export_enc_btn)
-        ielay.addLayout(ierow)
-        lay.addWidget(ie_grp)
-
-        # ── Two-Factor Authentication ──
+        # ── Two-Factor Authentication (2FA) ──
         twofa_grp = QGroupBox("Two-Factor Authentication (2FA)")
         tlay = QVBoxLayout(twofa_grp)
+        tlay.setSpacing(12)
 
         self.twofa_status = QLabel("")
-        self.twofa_status.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self.twofa_status.setStyleSheet("color: #a0a0a0; font-size: 13px;")
 
         self.twofa_enable_btn = QPushButton("")
         self.twofa_enable_btn.setMinimumHeight(40)
@@ -1877,10 +2021,23 @@ class SettingsTab(QWidget):
         tlay.addWidget(self.twofa_status)
         tlay.addWidget(self.twofa_enable_btn)
         tlay.addWidget(self.twofa_show_btn)
+
+        lay.addWidget(twofa_grp)
+        lay.addStretch()
+
+        self.pages.addWidget(scroll)
+
+    def _build_generator_page(self):
+        scroll, container, lay = self._create_scrollable_page()
+
+        title = QLabel("⚡  Password Generator Preferences")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
+        lay.addWidget(title)
+
         # ── Password Generator ──
-        gen_grp = QGroupBox("Password Generator Preferences")
+        gen_grp = QGroupBox("Preferences")
         gen_lay = QVBoxLayout(gen_grp)
-        gen_lay.setSpacing(12)
+        gen_lay.setSpacing(15)
 
         gen_hint = QLabel("Customize the default options for generating cryptographically secure passwords.")
         gen_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
@@ -1967,58 +2124,119 @@ class SettingsTab(QWidget):
         gen_lay.addLayout(preview_row)
 
         lay.addWidget(gen_grp)
-
-        # Load initial settings from backend
-        try:
-            length_val = int(self.backend.get_setting('pwd_gen_length', '16'))
-        except ValueError:
-            length_val = 16
-        upper_val = self.backend.get_setting('pwd_gen_include_uppercase', '1') == '1'
-        lower_val = self.backend.get_setting('pwd_gen_include_lowercase', '1') == '1'
-        digits_val = self.backend.get_setting('pwd_gen_include_digits', '1') == '1'
-        symbols_val = self.backend.get_setting('pwd_gen_include_symbols', '1') == '1'
-
-        self.len_slider.setValue(length_val)
-        self.chk_upper.setChecked(upper_val)
-        self.chk_lower.setChecked(lower_val)
-        self.chk_digits.setChecked(digits_val)
-        self.chk_symbols.setChecked(symbols_val)
-
-        # Connect signals
-        self.len_slider.valueChanged.connect(self._save_generator_settings)
-        self.chk_upper.stateChanged.connect(self._save_generator_settings)
-        self.chk_lower.stateChanged.connect(self._save_generator_settings)
-        self.chk_digits.stateChanged.connect(self._save_generator_settings)
-        self.chk_symbols.stateChanged.connect(self._save_generator_settings)
-
-        self._update_preview()
-
-        # ── Display Preferences ──
-        disp_grp = QGroupBox("Display")
-        dlay = QVBoxLayout(disp_grp)
-
-        self.vis_btn = QPushButton(f"{ICO_VIEW}  Show Passwords in List")
-        self.vis_btn.setObjectName("secondaryBtn")
-        self.vis_btn.setMinimumHeight(40)
-        self.vis_btn.setCheckable(True)
-        self.vis_btn.clicked.connect(self._toggle_visibility)
-        dlay.addWidget(self.vis_btn)
-        lay.addWidget(disp_grp)
-
-        credit = QLabel('Built by YacineDahmani • <a href="https://github.com/YacineDahmani">github.com/YacineDahmani</a>')
-        credit.setStyleSheet("font-size: 11px; color: #8f8f8f; padding-top: 8px;")
-        credit.setOpenExternalLinks(False)
-        credit.linkActivated.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
-        lay.addWidget(credit, alignment=Qt.AlignmentFlag.AlignRight)
-
         lay.addStretch()
-        scroll.setWidget(content)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(scroll)
+        self.pages.addWidget(scroll)
 
-        self._refresh_2fa_ui()
+    def _build_tools_page(self):
+        scroll, container, lay = self._create_scrollable_page()
+
+        title = QLabel("🛠️  Tools & Diagnostics")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
+        lay.addWidget(title)
+
+        # ── Password Analyzer ──
+        analyzer_grp = QGroupBox("Password Analyzer")
+        alay = QVBoxLayout(analyzer_grp)
+        alay.setSpacing(10)
+
+        analyzer_hint = QLabel("Check a password before saving it. The password stays local and is never exported.")
+        analyzer_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        analyzer_hint.setWordWrap(True)
+
+        analyzer_row = QHBoxLayout()
+        self.analyzer_input = QLineEdit()
+        self.analyzer_input.setPlaceholderText("Type a password to analyze")
+        self.analyzer_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.analyzer_input.setMinimumHeight(36)
+
+        self.analyzer_toggle = QPushButton(ICO_VIEW)
+        self.analyzer_toggle.setObjectName("iconBtn")
+        self.analyzer_toggle.setToolTip("Show password")
+        self.analyzer_toggle.clicked.connect(self._toggle_analyzer_visibility)
+
+        analyze_btn = QPushButton(f"{ICO_SEARCH}  Analyze")
+        analyze_btn.setMinimumHeight(36)
+        analyze_btn.clicked.connect(self._analyze_custom_password)
+
+        analyzer_row.addWidget(self.analyzer_input, 1)
+        analyzer_row.addWidget(self.analyzer_toggle)
+        analyzer_row.addWidget(analyze_btn)
+
+        self.analyzer_score = QLabel("No analysis yet.")
+        self.analyzer_score.setStyleSheet("font-size: 13px; color: #a0a0a0;")
+        self.analyzer_feedback = QLabel("")
+        self.analyzer_feedback.setStyleSheet("font-size: 12px; color: #d0d0d0;")
+        self.analyzer_feedback.setWordWrap(True)
+
+        alay.addWidget(analyzer_hint)
+        alay.addLayout(analyzer_row)
+        alay.addWidget(self.analyzer_score)
+        alay.addWidget(self.analyzer_feedback)
+        lay.addWidget(analyzer_grp)
+
+        # ── Password Health ──
+        health_grp = QGroupBox("Password Health Check")
+        hlay = QVBoxLayout(health_grp)
+        hlay.setSpacing(10)
+
+        health_hint = QLabel("Runs a full scan for weak, reused, and commonly breached passwords.")
+        health_hint.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        health_hint.setWordWrap(True)
+
+        scan_btn = QPushButton(f"{ICO_SEARCH}  Run Security Scan")
+        scan_btn.setMinimumHeight(40)
+        scan_btn.clicked.connect(self._run_scan)
+        hlay.addWidget(health_hint)
+        hlay.addWidget(scan_btn)
+
+        self.scan_result = QWidget()
+        self.scan_result_lay = QVBoxLayout(self.scan_result)
+        self.scan_result_lay.setContentsMargins(0, 0, 0, 0)
+        hlay.addWidget(self.scan_result)
+        lay.addWidget(health_grp)
+
+        # ── Backup & Restore ──
+        backup_grp = QGroupBox("Backup & Restore")
+        blay = QVBoxLayout(backup_grp)
+        blay.setSpacing(10)
+
+        brow = QHBoxLayout()
+        backup_btn = QPushButton(f"{ICO_SAVE}  Backup Vault")
+        backup_btn.setMinimumHeight(40)
+        backup_btn.clicked.connect(self._backup)
+
+        restore_btn = QPushButton(f"{ICO_REFRESH}  Restore Vault")
+        restore_btn.setObjectName("secondaryBtn")
+        restore_btn.setMinimumHeight(40)
+        restore_btn.clicked.connect(self._restore)
+
+        brow.addWidget(backup_btn)
+        brow.addWidget(restore_btn)
+        blay.addLayout(brow)
+        lay.addWidget(backup_grp)
+
+        # ── Import / Export ──
+        ie_grp = QGroupBox("Import / Export")
+        ielay = QVBoxLayout(ie_grp)
+        ielay.setSpacing(10)
+
+        ierow = QHBoxLayout()
+        export_btn = QPushButton(f"{ICO_UPLOAD}  Export as JSON")
+        export_btn.setMinimumHeight(40)
+        export_btn.clicked.connect(self._export_json)
+
+        export_enc_btn = QPushButton(f"{ICO_HIDE}  Export Encrypted Report")
+        export_enc_btn.setObjectName("secondaryBtn")
+        export_enc_btn.setMinimumHeight(40)
+        export_enc_btn.clicked.connect(self._export_encrypted)
+
+        ierow.addWidget(export_btn)
+        ierow.addWidget(export_enc_btn)
+        ielay.addLayout(ierow)
+        lay.addWidget(ie_grp)
+
+        self.pages.addWidget(scroll)
 
     def _toggle_analyzer_visibility(self):
         if self.analyzer_input.echoMode() == QLineEdit.EchoMode.Password:
@@ -2342,13 +2560,6 @@ class SettingsTab(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
 
-    def _toggle_visibility(self):
-        checked = self.vis_btn.isChecked()
-        if checked:
-            self.vis_btn.setText(f"{ICO_HIDE}  Hide Passwords in List")
-        else:
-            self.vis_btn.setText(f"{ICO_VIEW}  Show Passwords in List")
-
     def _refresh_2fa_ui(self):
         enabled = self.backend.is_2fa_enabled()
         if enabled:
@@ -2438,8 +2649,8 @@ class SettingsTab(QWidget):
     def _copy_preview(self):
         pwd = self.preview_in.text()
         if pwd:
-            pyperclip.copy(pwd)
-            show_toast(self, "Preview password copied!")
+            safe_copy(self, pwd, "Preview password copied!")
+
 
 
 # ─── Main Window ──────────────────────────────────────────────────────
